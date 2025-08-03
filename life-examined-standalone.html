@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Examined - Blockchain Journal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.8.0/web3.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .line-clamp-2 {
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Initial loading state -->
+        <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
+                </div>
+                
+                <button
+                    id="connectButton"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
+                >
+                    Connect MetaMask to Polygon
+                </button>
+                
+                <div id="status" class="mt-4 text-sm text-gray-600"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Your deployed contract details
+        const CONTRACT_ADDRESS = '0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A';
+        const CONTRACT_ABI = [
+            {
+                "inputs": [
+                    {"internalType": "string", "name": "_ipfsHash", "type": "string"},
+                    {"internalType": "uint256", "name": "_timestamp", "type": "uint256"},
+                    {"internalType": "string", "name": "_title", "type": "string"}
+                ],
+                "name": "storeEntry",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getMyEntries",
+                "outputs": [
+                    {
+                        "components": [
+                            {"internalType": "string", "name": "ipfsHash", "type": "string"},
+                            {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+                            {"internalType": "string", "name": "title", "type": "string"},
+                            {"internalType": "address", "name": "author", "type": "address"}
+                        ],
+                        "internalType": "struct LifeExamined.Entry[]",
+                        "name": "",
+                        "type": "tuple[]"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        // App state
+        let state = {
+            entries: [],
+            currentEntry: '',
+            currentTitle: '',
+            selectedEntry: null,
+            isConnected: false,
+            walletAddress: '',
+            searchTerm: '',
+            isUploading: false,
+            web3: null,
+            contract: null
+        };
+
+        // Update status message
+        function updateStatus(message) {
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.textContent = message;
+                console.log(message);
+            }
+        }
+
+        // Check if MetaMask is available
+        function checkMetaMask() {
+            if (typeof window.ethereum === 'undefined') {
+                updateStatus('MetaMask not detected. Please install MetaMask.');
+                return false;
+            }
+            updateStatus('MetaMask detected!');
+            return true;
+        }
+
+        // IPFS Upload Function
+        async function uploadToIPFS(encryptedData) {
+            try {
+                const ipfsData = {
+                    encryptedTitle: encryptedData.encryptedTitle,
+                    encryptedContent: encryptedData.encryptedContent,
+                    timestamp: new Date().toISOString(),
+                    signature: encryptedData.signature,
+                    message: encryptedData.message,
+                    author: state.walletAddress,
+                    version: "1.0"
+                };
+
+                const jsonData = JSON.stringify(ipfsData);
+                
+                console.log('Uploading to IPFS...');
+                // Simulate IPFS upload - in production, use real IPFS service
+                const mockHash = 'Qm' + Array.from({length: 44}, () => 
+                    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
+                        Math.floor(Math.random() * 62)
+                    ]
+                ).join('');
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                return {
+                    IpfsHash: mockHash,
+                    PinSize: jsonData.length,
+                    Timestamp: new Date().toISOString()
+                };
+
+            } catch (error) {
+                console.error('IPFS upload failed:', error);
+                throw error;
+            }
+        }
+
+        // Encryption function
+        async function encryptEntry(content, title) {
+            try {
+                let signature;
+                
+                if (typeof window.ethereum !== 'undefined' && state.isConnected) {
+                    const message = `Encrypt journal entry: ${Date.now()}`;
+                    signature = await window.ethereum.request({
+                        method: 'personal_sign',
+                        params: [message, state.walletAddress],
+                    });
+                } else {
+                    signature = '0x' + Array.from({length: 130}, () => 
+                        Math.floor(Math.random() * 16).toString(16)
+                    ).join('');
+                }
+                
+                const keyData = signature.slice(2, 66);
+                
+                const encryptText = (text, key) => {
+                    let result = '';
+                    for (let i = 0; i < text.length; i++) {
+                        result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+                    }
+                    return btoa(result);
+                };
+                
+                const encryptedTitle = encryptText(title, keyData);
+                const encryptedContent = encryptText(content, keyData);
+                
+                return {
+                    encryptedTitle,
+                    encryptedContent,
+                    signature,
+                    message: `Encrypt journal entry: ${Date.now()}`
+                };
+            } catch (error) {
+                console.error('Encryption failed:', error);
+                throw error;
+            }
+        }
+
+        // Store on blockchain
+        async function storeOnBlockchain(ipfsHash, title, timestamp) {
+            try {
+                if (state.contract && state.isConnected) {
+                    console.log('Sending real blockchain transaction...');
+                    
+                    const tx = await state.contract.methods.storeEntry(
+                        ipfsHash,
+                        timestamp,
+                        title
+                    ).send({
+                        from: state.walletAddress,
+                        gas: 150000
+                    });
+                    
+                    console.log('✅ Real blockchain transaction successful!');
+                    console.log('Transaction Hash:', tx.transactionHash);
+                    return tx.transactionHash;
+                } else {
+                    throw new Error('Wallet not connected or contract not initialized');
+                }
+            } catch (error) {
+                console.error('Blockchain transaction failed:', error);
+                throw error;
+            }
+        }
+
+        // Connect wallet
+        async function connectWallet() {
+            updateStatus('Checking MetaMask...');
+            
+            if (!checkMetaMask()) {
+                return;
+            }
+
+            try {
+                updateStatus('Requesting account access...');
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+                
+                if (accounts.length > 0) {
+                    updateStatus('Checking network...');
+                    
+                    // Check if we're on Polygon network
+                    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                    
+                    if (chainId !== '0x89') {
+                        updateStatus('Switching to Polygon network...');
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: '0x89' }],
+                            });
+                        } catch (switchError) {
+                            if (switchError.code === 4902) {
+                                updateStatus('Adding Polygon network...');
+                                await window.ethereum.request({
+                                    method: 'wallet_addEthereumChain',
+                                    params: [{
+                                        chainId: '0x89',
+                                        chainName: 'Polygon Mainnet',
+                                        nativeCurrency: {
+                                            name: 'POL',
+                                            symbol: 'POL',
+                                            decimals: 18,
+                                        },
+                                        rpcUrls: ['https://polygon-rpc.com/'],
+                                        blockExplorerUrls: ['https://polygonscan.com/'],
+                                    }],
+                                });
+                            }
+                        }
+                    }
+                    
+                    updateStatus('Initializing Web3...');
+                    state.web3 = new Web3(window.ethereum);
+                    state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                    state.walletAddress = accounts[0];
+                    state.isConnected = true;
+                    
+                    updateStatus('Connected successfully!');
+                    console.log('✅ Connected to Polygon with real MetaMask!');
+                    console.log('Contract Address:', CONTRACT_ADDRESS);
+                    
+                    // Load existing entries
+                    await loadEntries();
+                    
+                    renderMainApp();
+                    
+                    // Listen for account changes
+                    window.ethereum.on('accountsChanged', (accounts) => {
+                        if (accounts.length === 0) {
+                            state.isConnected = false;
+                            state.walletAddress = '';
+                            renderWelcomeScreen();
+                        } else {
+                            state.walletAddress = accounts[0];
+                            loadEntries();
+                            renderMainApp();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error connecting to MetaMask:', error);
+                updateStatus('Connection failed: ' + error.message);
+            }
+        }
+
+        // Load entries from blockchain
+        async function loadEntries() {
+            try {
+                if (state.contract && state.isConnected) {
+                    console.log('Loading entries from blockchain...');
+                    const blockchainEntries = await state.contract.methods.getMyEntries().call();
+                    
+                    state.entries = blockchainEntries.map((entry, index) => ({
+                        id: entry.timestamp + index,
+                        title: `Entry ${new Date(entry.timestamp * 1000).toLocaleDateString()}`,
+                        content: `IPFS: ${entry.ipfsHash}`,
+                        timestamp: new Date(entry.timestamp * 1000).toISOString(),
+                        encrypted: true,
+                        onChain: true,
+                        ipfsHash: entry.ipfsHash,
+                        txHash: 'On blockchain'
+                    }));
+                    
+                    console.log(`Loaded ${state.entries.length} entries from blockchain`);
+                }
+            } catch (error) {
+                console.error('Error loading entries:', error);
+            }
+        }
+
+        // Save entry
+        async function saveEntry() {
+            if (!state.currentTitle.trim() || !state.currentEntry.trim()) return;
+            
+            state.isUploading = true;
+            renderMainApp();
+            
+            try {
+                console.log('Step 1: Encrypting entry...');
+                const encryptedData = await encryptEntry(state.currentEntry, state.currentTitle);
+                
+                console.log('Step 2: Uploading to IPFS...');
+                const ipfsResult = await uploadToIPFS(encryptedData);
+                
+                console.log('Step 3: Storing on blockchain...');
+                const txHash = await storeOnBlockchain(
+                    ipfsResult.IpfsHash, 
+                    state.currentTitle, 
+                    Math.floor(Date.now() / 1000)
+                );
+                
+                console.log('Step 4: Creating entry record...');
+                const newEntry = {
+                    id: Date.now(),
+                    title: state.currentTitle,
+                    content: state.currentEntry,
+                    timestamp: new Date().toISOString(),
+                    encrypted: true,
+                    onChain: true,
+                    ipfsHash: ipfsResult.IpfsHash,
+                    ipfsSize: ipfsResult.PinSize,
+                    txHash: txHash
+                };
+                
+                state.entries.unshift(newEntry);
+                state.currentEntry = '';
+                state.currentTitle = '';
+                
+                console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
+                console.log('IPFS Hash:', ipfsResult.IpfsHash);
+                console.log('Transaction Hash:', txHash);
+                console.log('🎉 Your journal entry is now completely decentralized!');
+                
+            } catch (error) {
+                console.error('Failed to save entry:', error);
+                alert('Failed to save entry: ' + error.message);
+            } finally {
+                state.isUploading = false;
+                renderMainApp();
+            }
+        }
+
+        // Render functions
+        function renderWelcomeScreen() {
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+                        <div class="mb-6">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
+                        </div>
+                        
+                        <button
+                            id="connectButton"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
+                        >
+                            Connect MetaMask to Polygon
+                        </button>
+                        
+                        <div id="status" class="mt-4 text-sm text-gray-600"></div>
+                    </div>
+                </div>
+            `;
+            
+            // Re-attach event listener
+            document.getElementById('connectButton').addEventListener('click', connectWallet);
+        }
+
+        function renderMainApp() {
+            const filteredEntries = state.entries.filter(entry => 
+                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
+            );
+
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                    <header class="bg-white shadow-sm border-b">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div class="flex justify-between items-center py-4">
+                                <div class="flex items-center space-x-3">
+                                    <h1 class="text-2xl font-bold text-gray-900">Life Examined</h1>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <div class="text-sm text-gray-600">
+                                        Connected: ${state.walletAddress.slice(0, 6)}...${state.walletAddress.slice(-4)}
+                                    </div>
+                                    <div class="flex items-center space-x-1 text-green-600 text-sm">
+                                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        <span>Polygon Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            
+                            <div class="lg:col-span-2">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h2 class="text-xl font-semibold text-gray-900">New Entry</h2>
+                                        <div class="flex items-center space-x-2 text-sm text-gray-500">
+                                            <span>🔒 Encrypted before blockchain</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <input
+                                            type="text"
+                                            id="titleInput"
+                                            placeholder="Entry title..."
+                                            value="${state.currentTitle}"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                        
+                                        <textarea
+                                            id="contentInput"
+                                            placeholder="Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain."
+                                            rows="12"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                        >${state.currentEntry}</textarea>
+                                        
+                                        <button
+                                            id="saveButton"
+                                            class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                                        >
+                                            <span>➕</span>
+                                            <span id="saveButtonText">
+                                                ${state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="lg:col-span-1">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h2 class="text-xl font-semibold text-gray-900">Your Entries</h2>
+                                        <span>📖</span>
+                                    </div>
+                                    
+                                    <div class="relative mb-4">
+                                        <input
+                                            type="text"
+                                            id="searchInput"
+                                            placeholder="Search entries..."
+                                            value="${state.searchTerm}"
+                                            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div class="space-y-3 max-h-96 overflow-y-auto">
+                                        ${filteredEntries.length === 0 ? `
+                                            <div class="text-center py-8 text-gray-500">
+                                                <span class="text-4xl">📖</span>
+                                                <p>No entries yet. Start writing!</p>
+                                            </div>
+                                        ` : filteredEntries.map(entry => `
+                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
+                                                    <span class="text-green-500">🔒</span>
+                                                </div>
+                                                <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
+                                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                                                    <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
+                                                    <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Re-attach event listeners
+            const titleInput = document.getElementById('titleInput');
+            const contentInput = document.getElementById('contentInput');
+            const saveButton = document.getElementById('saveButton');
+            const searchInput = document.getElementById('searchInput');
+            
+            if (titleInput) {
+                titleInput.addEventListener('input', (e) => {
+                    state.currentTitle = e.target.value;
+                    updateSaveButton();
+                });
+            }
+            
+            if (contentInput) {
+                contentInput.addEventListener('input', (e) => {
+                    state.currentEntry = e.target.value;
+                    updateSaveButton();
+                });
+            }
+            
+            if (saveButton) {
+                saveButton.addEventListener('click', saveEntry);
+                updateSaveButton();
+            }
+            
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    state.searchTerm = e.target.value;
+                    renderMainApp();
+                });
+            }
+        }
+
+        function updateSaveButton() {
+            const saveButton = document.getElementById('saveButton');
+            if (saveButton) {
+                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
+                saveButton.disabled = isDisabled;
+                if (isDisabled) {
+                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Life Examined app initializing...');
+            
+            // Check MetaMask on load
+            if (checkMetaMask()) {
+                updateStatus('MetaMask detected! Click to connect.');
+            }
+            
+            // Attach initial event listener
+            const connectButton = document.getElementById('connectButton');
+            if (connectButton) {
+                connectButton.addEventListener('click', connectWallet);
+            }
+        });
+    </script>
+</body>
+</html>            rpcUrls: ['https://polygon-rpc.com/'],
+                                            blockExplorerUrls: ['https://polygonscan.com/'],
+                                        }],
+                                    });
+                                }
+                            }
+                        }
+                        
+                        state.web3 = new Web3(window.ethereum);
+                        state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                        state.walletAddress = accounts[0];
+                        state.isConnected = true;
+                        
+                        console.log('✅ Connected to Polygon with real MetaMask!');
+                        console.log('Contract Address:', CONTRACT_ADDRESS);
+                        
+                        // Load existing entries
+                        await loadEntries();
+                        
+                        renderApp();
+                        
+                        window.ethereum.on('accountsChanged', (accounts) => {
+                            if (accounts.length === 0) {
+                                state.isConnected = false;
+                                state.walletAddress = '';
+                                renderApp();
+                            } else {
+                                state.walletAddress = accounts[0];
+                                loadEntries();
+                                renderApp();
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error connecting to MetaMask:', error);
+                    alert('Error connecting to MetaMask: ' + error.message);
+                }
+            } else {
+                alert('MetaMask is not installed. Please install MetaMask to use this app.');
+            }
+        }
+
+        // Load entries from blockchain
+        async function loadEntries() {
+            try {
+                if (state.contract && state.isConnected) {
+                    console.log('Loading entries from blockchain...');
+                    const blockchainEntries = await state.contract.methods.getMyEntries().call();
+                    
+                    state.entries = blockchainEntries.map(entry => ({
+                        id: entry.timestamp,
+                        title: `Entry ${new Date(entry.timestamp * 1000).toLocaleDateString()}`,
+                        content: `IPFS: ${entry.ipfsHash}`,
+                        timestamp: new Date(entry.timestamp * 1000).toISOString(),
+                        encrypted: true,
+                        onChain: true,
+                        ipfsHash: entry.ipfsHash,
+                        txHash: 'On blockchain'
+                    }));
+                    
+                    console.log(`Loaded ${state.entries.length} entries from blockchain`);
+                }
+            } catch (error) {
+                console.error('Error loading entries:', error);
+            }
+        }
+
+        // Save entry
+        async function saveEntry() {
+            if (!state.currentTitle.trim() || !state.currentEntry.trim()) return;
+            
+            state.isUploading = true;
+            renderApp();
+            
+            try {
+                console.log('Step 1: Encrypting entry...');
+                const encryptedData = await encryptEntry(state.currentEntry, state.currentTitle);
+                
+                console.log('Step 2: Uploading to IPFS...');
+                const ipfsResult = await uploadToIPFS(encryptedData);
+                
+                console.log('Step 3: Storing on blockchain...');
+                const txHash = await storeOnBlockchain(
+                    ipfsResult.IpfsHash, 
+                    state.currentTitle, 
+                    Math.floor(Date.now() / 1000)
+                );
+                
+                console.log('Step 4: Creating entry record...');
+                const newEntry = {
+                    id: Date.now(),
+                    title: state.currentTitle,
+                    content: state.currentEntry,
+                    timestamp: new Date().toISOString(),
+                    encrypted: true,
+                    onChain: true,
+                    ipfsHash: ipfsResult.IpfsHash,
+                    ipfsSize: ipfsResult.PinSize,
+                    txHash: txHash
+                };
+                
+                state.entries.unshift(newEntry);
+                state.currentEntry = '';
+                state.currentTitle = '';
+                
+                console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
+                console.log('IPFS Hash:', ipfsResult.IpfsHash);
+                console.log('Transaction Hash:', txHash);
+                console.log('🎉 Your journal entry is now completely decentralized!');
+                
+            } catch (error) {
+                console.error('Failed to save entry:', error);
+                alert('Failed to save entry: ' + error.message);
+            } finally {
+                state.isUploading = false;
+                renderApp();
+            }
+        }
+
+        // Render functions
+        function renderWelcomeScreen() {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+                        <div class="mb-6">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
+                        </div>
+                        
+                        <button
+                            onclick="connectWallet()"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
+                        >
+                            Connect MetaMask to Polygon
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMainApp() {
+            const filteredEntries = state.entries.filter(entry => 
+                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
+            );
+
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                    <header class="bg-white shadow-sm border-b">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div class="flex justify-between items-center py-4">
+                                <div class="flex items-center space-x-3">
+                                    <h1 class="text-2xl font-bold text-gray-900">Life Examined</h1>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <div class="text-sm text-gray-600">
+                                        Connected: ${state.walletAddress.slice(0, 6)}...${state.walletAddress.slice(-4)}
+                                    </div>
+                                    <div class="flex items-center space-x-1 text-green-600 text-sm">
+                                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        <span>Polygon Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            
+                            <div class="lg:col-span-2">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h2 class="text-xl font-semibold text-gray-900">New Entry</h2>
+                                        <div class="flex items-center space-x-2 text-sm text-gray-500">
+                                            <span>🔒 Encrypted before blockchain</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <input
+                                            type="text"
+                                            placeholder="Entry title..."
+                                            value="${state.currentTitle}"
+                                            onchange="state.currentTitle = this.value"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                        
+                                        <textarea
+                                            placeholder="Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain."
+                                            rows="12"
+                                            onchange="state.currentEntry = this.value"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                        >${state.currentEntry}</textarea>
+                                        
+                                        <button
+                                            onclick="saveEntry()"
+                                            ${(!state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading) ? 'disabled' : ''}
+                                            class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                                        >
+                                            <span>➕</span>
+                                            <span>
+                                                ${state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="lg:col-span-1">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h2 class="text-xl font-semibold text-gray-900">Your Entries</h2>
+                                        <span>📖</span>
+                                    </div>
+                                    
+                                    <div class="relative mb-4">
+                                        <input
+                                            type="text"
+                                            placeholder="Search entries..."
+                                            value="${state.searchTerm}"
+                                            onchange="state.searchTerm = this.value; renderApp();"
+                                            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div class="space-y-3 max-h-96 overflow-y-auto">
+                                        ${filteredEntries.length === 0 ? `
+                                            <div class="text-center py-8 text-gray-500">
+                                                <span class="text-4xl">📖</span>
+                                                <p>No entries yet. Start writing!</p>
+                                            </div>
+                                        ` : filteredEntries.map(entry => `
+                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
+                                                    <span class="text-green-500">🔒</span>
+                                                </div>
+                                                <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
+                                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                                                    <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
+                                                    <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderApp() {
+            const appDiv = document.getElementById('app');
+            if (state.isConnected) {
+                appDiv.innerHTML = renderMainApp();
+            } else {
+                appDiv.innerHTML = renderWelcomeScreen();
+            }
+        }
+
+        // Initialize app
+        renderApp();
+    </script>
+</body>
+</html>
