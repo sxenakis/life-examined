@@ -1,4 +1,15 @@
-<!DOCTYPE html>
+function updateSaveButton() {
+            const saveButton = document.getElementById('saveButton');
+            if (saveButton) {
+                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
+                saveButton.disabled = isDisabled;
+                if (isDisabled) {
+                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -584,7 +595,7 @@
                                                 <p>No entries yet. Start writing!</p>
                                             </div>
                                         ` : filteredEntries.map(entry => `
-                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry('${entry.id}')">
                                                 <div class="flex items-center justify-between mb-2">
                                                     <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
                                                     <span class="text-green-500">🔒</span>
@@ -632,21 +643,111 @@
             if (searchInput) {
                 searchInput.addEventListener('input', (e) => {
                     state.searchTerm = e.target.value;
-                    renderMainApp();
+                    // Don't re-render the entire app, just filter and update the entries section
+                    updateEntriesDisplay();
                 });
             }
         }
 
-        function updateSaveButton() {
-            const saveButton = document.getElementById('saveButton');
-            if (saveButton) {
-                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
-                saveButton.disabled = isDisabled;
-                if (isDisabled) {
-                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
+        function updateEntriesDisplay() {
+            const filteredEntries = state.entries.filter(entry => 
+                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
+            );
+
+            const entriesContainer = document.querySelector('.space-y-3.max-h-96.overflow-y-auto');
+            if (entriesContainer) {
+                entriesContainer.innerHTML = filteredEntries.length === 0 ? `
+                    <div class="text-center py-8 text-gray-500">
+                        <span class="text-4xl">📖</span>
+                        <p>${state.searchTerm ? 'No matching entries found.' : 'No entries yet. Start writing!'}</p>
+                    </div>
+                ` : filteredEntries.map(entry => `
+                    <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry('${entry.id}')">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
+                            <span class="text-green-500">🔒</span>
+                        </div>
+                        <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
+                        <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                            <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
+                            <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Function to view individual entries
+        function viewEntry(entryId) {
+            const entry = state.entries.find(e => e.id == entryId);
+            if (entry) {
+                state.selectedEntry = entry;
+                showEntryModal();
+            }
+        }
+
+        // Show entry modal
+        function showEntryModal() {
+            if (!state.selectedEntry) return;
+
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+                    <div class="p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-2xl font-bold text-gray-900">${state.selectedEntry.title}</h2>
+                            <button onclick="closeEntryModal()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+                        </div>
+                        
+                        <div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">
+                            <div class="flex items-center space-x-1">
+                                <span>📅</span>
+                                <span>${new Date(state.selectedEntry.timestamp).toLocaleString()}</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <span>🔒</span>
+                                <span>Encrypted</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <span>⛓️</span>
+                                <span>On Blockchain</span>
+                            </div>
+                        </div>
+                        
+                        <div class="prose max-w-none">
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                                <p class="text-sm text-yellow-800">
+                                    <strong>Note:</strong> This entry is encrypted and stored on IPFS. 
+                                    To view the actual content, you would need to retrieve and decrypt it from IPFS using your private key.
+                                </p>
+                            </div>
+                            <p class="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                                ${state.selectedEntry.content}
+                            </p>
+                        </div>
+                        
+                        <div class="mt-6 pt-4 border-t border-gray-200">
+                            <div class="text-xs text-gray-500 space-y-1">
+                                <div><strong>IPFS Hash:</strong> ${state.selectedEntry.ipfsHash}</div>
+                                <div><strong>Transaction:</strong> ${state.selectedEntry.txHash}</div>
+                                <div><strong>Entry Size:</strong> ${state.selectedEntry.ipfsSize || 'Unknown'} bytes</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+        }
+
+        // Close entry modal
+        function closeEntryModal() {
+            const modal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+            if (modal) {
+                modal.remove();
+                state.selectedEntry = null;
             }
         }
 
