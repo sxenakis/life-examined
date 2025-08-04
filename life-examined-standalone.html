@@ -364,28 +364,49 @@
             }
         }
 
-        // Load entries from blockchain
+        // Load entries from blockchain ONLY - Pure Blockchain Storage
         async function loadEntries() {
             try {
                 if (state.contract && state.isConnected) {
                     console.log('Loading entries from blockchain...');
-                    const blockchainEntries = await state.contract.methods.getMyEntries().call();
                     
-                    state.entries = blockchainEntries.map((entry, index) => ({
-                        id: entry.timestamp + index,
-                        title: entry.title || `Entry ${new Date(entry.timestamp * 1000).toLocaleDateString()}`,
-                        content: `IPFS: ${entry.ipfsHash}`,
-                        timestamp: new Date(entry.timestamp * 1000).toISOString(),
-                        encrypted: true,
-                        onChain: true,
-                        ipfsHash: entry.ipfsHash,
-                        txHash: 'On blockchain'
-                    }));
-                    
-                    console.log(`Loaded ${state.entries.length} entries from blockchain`);
+                    try {
+                        const blockchainEntries = await state.contract.methods.getMyEntries().call({
+                            from: state.walletAddress
+                        });
+                        
+                        console.log('Raw blockchain entries:', blockchainEntries);
+                        
+                        if (blockchainEntries && blockchainEntries.length > 0) {
+                            state.entries = blockchainEntries.map((entry, index) => ({
+                                id: entry.timestamp + index,
+                                title: entry.title || `Entry ${new Date(entry.timestamp * 1000).toLocaleDateString()}`,
+                                content: `Encrypted entry stored on IPFS: ${entry.ipfsHash}`,
+                                timestamp: new Date(entry.timestamp * 1000).toISOString(),
+                                encrypted: true,
+                                onChain: true,
+                                ipfsHash: entry.ipfsHash,
+                                txHash: 'On blockchain'
+                            }));
+                            
+                            console.log(`✅ Loaded ${state.entries.length} entries from blockchain`);
+                        } else {
+                            console.log('No entries found on blockchain for this wallet');
+                            state.entries = [];
+                        }
+                    } catch (blockchainError) {
+                        console.error('Failed to load from blockchain:', blockchainError);
+                        console.log('This might be because you have no entries yet, or there\'s a network issue');
+                        state.entries = [];
+                    }
+                } else {
+                    console.log('Contract not ready - will load entries after connection');
+                    state.entries = [];
                 }
+                
             } catch (error) {
                 console.error('Error loading entries:', error);
+                state.entries = [];
             }
         }
 
