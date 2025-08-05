@@ -328,10 +328,29 @@
                 
                 const decryptedTitle = decryptText(encryptedData.encryptedTitle, keyData);
                 const decryptedContent = decryptText(encryptedData.encryptedContent, keyData);
-                const decryptedCategory = encryptedData.encryptedCategory ? 
-                    decryptText(encryptedData.encryptedCategory, keyData) : '';
-                const decryptedTags = encryptedData.encryptedTags ? 
-                    JSON.parse(decryptText(encryptedData.encryptedTags, keyData) || '[]') : [];
+                
+                // Handle backward compatibility - older entries may not have category/tags
+                let decryptedCategory = '';
+                let decryptedTags = [];
+                
+                try {
+                    if (encryptedData.encryptedCategory) {
+                        decryptedCategory = decryptText(encryptedData.encryptedCategory, keyData);
+                    }
+                } catch (error) {
+                    console.log('No category data (older entry)');
+                    decryptedCategory = '';
+                }
+                
+                try {
+                    if (encryptedData.encryptedTags) {
+                        const tagsString = decryptText(encryptedData.encryptedTags, keyData);
+                        decryptedTags = JSON.parse(tagsString || '[]');
+                    }
+                } catch (error) {
+                    console.log('No tags data (older entry)');
+                    decryptedTags = [];
+                }
                 
                 return {
                     title: decryptedTitle,
@@ -380,7 +399,7 @@
                         }
                         
                         // Add tags to global set
-                        if (decrypted.tags) {
+                        if (decrypted.tags && Array.isArray(decrypted.tags)) {
                             decrypted.tags.forEach(tag => state.allTags.add(tag));
                         }
                         
@@ -388,20 +407,21 @@
                             title: decrypted.title || originalTitle,
                             content: decrypted.content,
                             category: decrypted.category || '',
-                            tags: decrypted.tags || [],
+                            tags: Array.isArray(decrypted.tags) ? decrypted.tags : [],
                             isDecrypted: true,
                             ipfsData: ipfsData
                         };
                     }
                 } catch (ipfsError) {
-                    console.log('IPFS retrieval failed:', ipfsError);
+                    console.log('IPFS retrieval failed (expected for demo):', ipfsError);
                 }
                 
+                // Fallback for demo - provide default values for older entries
                 return {
                     title: originalTitle,
                     content: 'This entry would show your decrypted journal content here.\n\nThe actual content is encrypted and stored on IPFS at: ' + ipfsHash + '\n\nIn a production version, this would retrieve and decrypt your actual journal text using your private key.',
-                    category: 'Personal',
-                    tags: ['demo'],
+                    category: 'Personal', // Default category for older entries
+                    tags: ['legacy'], // Default tag for older entries
                     isDecrypted: false,
                     note: 'Demo mode - actual IPFS retrieval would happen in production'
                 };
@@ -435,8 +455,8 @@
                 const decrypted = decryptEntry(entry.ipfsData, signature);
                 
                 if (decrypted.success) {
-                    // Add tags to global set
-                    if (decrypted.tags) {
+                    // Add tags to global set (with safety check)
+                    if (decrypted.tags && Array.isArray(decrypted.tags)) {
                         decrypted.tags.forEach(tag => state.allTags.add(tag));
                     }
                     
@@ -446,8 +466,8 @@
                             ...state.entries[entryIndex],
                             title: decrypted.title,
                             content: decrypted.content,
-                            category: decrypted.category,
-                            tags: decrypted.tags,
+                            category: decrypted.category || '',
+                            tags: Array.isArray(decrypted.tags) ? decrypted.tags : [],
                             isDecrypted: true
                         };
                         
@@ -466,8 +486,8 @@
                         success: true,
                         title: decrypted.title,
                         content: decrypted.content,
-                        category: decrypted.category,
-                        tags: decrypted.tags
+                        category: decrypted.category || '',
+                        tags: Array.isArray(decrypted.tags) ? decrypted.tags : []
                     };
                 } else {
                     throw new Error('Decryption failed even with fresh signature');
@@ -671,7 +691,7 @@
                                     }
 
                                     return {
-                                        id: entry.timestamp + index,
+                                        id: entry.timestamp * 1000 + index, // Use timestamp in milliseconds for unique ID
                                         title: displayTitle,
                                         content: displayContent,
                                         category: displayCategory,
@@ -689,15 +709,25 @@
                                 })
                             );
                             
-                            state.entries = processedEntries;
+                            state.entries = processedEntries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                             console.log('✅ Loaded and processed ' + state.entries.length + ' entries from blockchain');
+                            
+                            if (state.entries.length === 0) {
+                                console.log('⚠️ Contract returned entries but processing resulted in empty list');
+                            }
                         } else {
                             console.log('No entries found on blockchain for this wallet');
                             state.entries = [];
                         }
                     } catch (blockchainError) {
                         console.error('Failed to load from blockchain:', blockchainError);
-                        console.log('This might be because you have no entries yet, or there\'s a network issue');
+                        
+                        if (blockchainError.message.includes('revert')) {
+                            console.log('Contract call reverted - might be no entries or contract issue');
+                        } else if (blockchainError.message.includes('network')) {
+                            console.log('Network error - blockchain might be slow');
+                        }
+                        
                         state.entries = [];
                     }
                 } else {
@@ -758,7 +788,10 @@
                     isDecrypted: true
                 };
                 
+                // Add to entries immediately (optimistic update)
                 state.entries.unshift(newEntry);
+                
+                // Clear form
                 state.currentEntry = '';
                 state.currentTitle = '';
                 state.currentCategory = '';
@@ -767,12 +800,24 @@
                 
                 console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
                 console.log('🎉 Your journal entry is now completely decentralized!');
+                console.log('Transaction Hash:', txHash);
                 
-                alert('🎉 Journal entry successfully saved to blockchain!');
+                alert('🎉 Journal entry successfully saved to blockchain!\n\nTransaction: ' + txHash);
+                
+                // Wait a moment for blockchain confirmation, then reload entries
+                setTimeout(async () => {
+                    console.log('Reloading entries from blockchain to confirm...');
+                    await loadEntries();
+                    updateEntriesDisplay();
+                    updateFilters();
+                }, 5000); // Wait 5 seconds for blockchain confirmation
                 
             } catch (error) {
                 console.error('Failed to save entry:', error);
                 alert('Failed to save entry: ' + error.message);
+                
+                // Remove the optimistic entry if save failed
+                state.entries = state.entries.filter(entry => entry.id !== Date.now());
             } finally {
                 state.isUploading = false;
                 renderMainApp();
