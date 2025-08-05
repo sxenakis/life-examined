@@ -1,15 +1,4 @@
-function updateSaveButton() {
-            const saveButton = document.getElementById('saveButton');
-            if (saveButton) {
-                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
-                saveButton.disabled = isDisabled;
-                if (isDisabled) {
-                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            }
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -28,7 +17,6 @@ function updateSaveButton() {
 </head>
 <body>
     <div id="app">
-        <!-- Initial loading state -->
         <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
                 <div class="mb-6">
@@ -139,7 +127,6 @@ function updateSaveButton() {
                 const jsonData = JSON.stringify(ipfsData);
                 
                 console.log('Uploading to IPFS...');
-                // Simulate IPFS upload - in production, use real IPFS service
                 const mockHash = 'Qm' + Array.from({length: 44}, () => 
                     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
                         Math.floor(Math.random() * 62)
@@ -202,7 +189,7 @@ function updateSaveButton() {
             }
         }
 
-        // FIXED: Store on blockchain with proper gas estimation and error handling
+        // Store on blockchain with proper gas estimation and error handling
         async function storeOnBlockchain(ipfsHash, title, timestamp) {
             try {
                 if (!state.contract || !state.isConnected) {
@@ -233,7 +220,6 @@ function updateSaveButton() {
                     console.log('Gas estimate:', gasEstimate);
                 } catch (estimateError) {
                     console.error('Gas estimation failed:', estimateError);
-                    // Use a higher default gas limit if estimation fails
                     gasEstimate = 300000;
                     console.log('Using default gas limit:', gasEstimate);
                 }
@@ -267,7 +253,6 @@ function updateSaveButton() {
             } catch (error) {
                 console.error('Blockchain transaction failed:', error);
                 
-                // Provide more specific error messages
                 if (error.message.includes('revert')) {
                     throw new Error('Smart contract rejected the transaction. Please check your parameters.');
                 } else if (error.message.includes('insufficient funds')) {
@@ -299,7 +284,6 @@ function updateSaveButton() {
                 if (accounts.length > 0) {
                     updateStatus('Checking network...');
                     
-                    // Check if we're on Polygon network
                     const chainId = await window.ethereum.request({ method: 'eth_chainId' });
                     
                     if (chainId !== '0x89') {
@@ -336,7 +320,6 @@ function updateSaveButton() {
                     state.walletAddress = accounts[0];
                     state.isConnected = true;
                     
-                    // Test contract connection
                     updateStatus('Testing contract connection...');
                     try {
                         const totalEntries = await state.contract.methods.totalEntries().call();
@@ -351,12 +334,9 @@ function updateSaveButton() {
                     console.log('Contract Address:', CONTRACT_ADDRESS);
                     console.log('Wallet Address:', state.walletAddress);
                     
-                    // Load existing entries
                     await loadEntries();
-                    
                     renderMainApp();
                     
-                    // Listen for account changes
                     window.ethereum.on('accountsChanged', (accounts) => {
                         if (accounts.length === 0) {
                             state.isConnected = false;
@@ -375,7 +355,7 @@ function updateSaveButton() {
             }
         }
 
-        // Load entries from blockchain ONLY - Pure Blockchain Storage
+        // Load entries from blockchain ONLY
         async function loadEntries() {
             try {
                 if (state.contract && state.isConnected) {
@@ -414,7 +394,6 @@ function updateSaveButton() {
                     console.log('Contract not ready - will load entries after connection');
                     state.entries = [];
                 }
-                
             } catch (error) {
                 console.error('Error loading entries:', error);
                 state.entries = [];
@@ -478,177 +457,7 @@ function updateSaveButton() {
             }
         }
 
-        // Render functions
-        function renderWelcomeScreen() {
-            document.getElementById('app').innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-                        <div class="mb-6">
-                            <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
-                        </div>
-                        
-                        <button
-                            id="connectButton"
-                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
-                        >
-                            Connect MetaMask to Polygon
-                        </button>
-                        
-                        <div id="status" class="mt-4 text-sm text-gray-600"></div>
-                    </div>
-                </div>
-            `;
-            
-            // Re-attach event listener
-            document.getElementById('connectButton').addEventListener('click', connectWallet);
-        }
-
-        function renderMainApp() {
-            const filteredEntries = state.entries.filter(entry => 
-                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
-                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
-            );
-
-            document.getElementById('app').innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                    <header class="bg-white shadow-sm border-b">
-                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div class="flex justify-between items-center py-4">
-                                <div class="flex items-center space-x-3">
-                                    <h1 class="text-2xl font-bold text-gray-900">Life Examined</h1>
-                                </div>
-                                <div class="flex items-center space-x-4">
-                                    <div class="text-sm text-gray-600">
-                                        Connected: ${state.walletAddress.slice(0, 6)}...${state.walletAddress.slice(-4)}
-                                    </div>
-                                    <div class="flex items-center space-x-1 text-green-600 text-sm">
-                                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        <span>Polygon Connected</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </header>
-
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            
-                            <div class="lg:col-span-2">
-                                <div class="bg-white rounded-2xl shadow-lg p-6">
-                                    <div class="flex items-center justify-between mb-6">
-                                        <h2 class="text-xl font-semibold text-gray-900">New Entry</h2>
-                                        <div class="flex items-center space-x-2 text-sm text-gray-500">
-                                            <span>🔒 Encrypted before blockchain</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="space-y-4">
-                                        <input
-                                            type="text"
-                                            id="titleInput"
-                                            placeholder="Entry title..."
-                                            value="${state.currentTitle}"
-                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                        
-                                        <textarea
-                                            id="contentInput"
-                                            placeholder="Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain."
-                                            rows="12"
-                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                                        >${state.currentEntry}</textarea>
-                                        
-                                        <button
-                                            id="saveButton"
-                                            class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-                                        >
-                                            <span>➕</span>
-                                            <span id="saveButtonText">
-                                                ${state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain'}
-                                            </span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="lg:col-span-1">
-                                <div class="bg-white rounded-2xl shadow-lg p-6">
-                                    <div class="flex items-center justify-between mb-4">
-                                        <h2 class="text-xl font-semibold text-gray-900">Your Entries</h2>
-                                        <span>📖</span>
-                                    </div>
-                                    
-                                    <div class="relative mb-4">
-                                        <input
-                                            type="text"
-                                            id="searchInput"
-                                            placeholder="Search entries..."
-                                            value="${state.searchTerm}"
-                                            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                    </div>
-                                    
-                                    <div class="space-y-3 max-h-96 overflow-y-auto">
-                                        ${filteredEntries.length === 0 ? `
-                                            <div class="text-center py-8 text-gray-500">
-                                                <span class="text-4xl">📖</span>
-                                                <p>No entries yet. Start writing!</p>
-                                            </div>
-                                        ` : filteredEntries.map(entry => `
-                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry('${entry.id}')">
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
-                                                    <span class="text-green-500">🔒</span>
-                                                </div>
-                                                <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
-                                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
-                                                    <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
-                                                    <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
-                                                </div>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Re-attach event listeners
-            const titleInput = document.getElementById('titleInput');
-            const contentInput = document.getElementById('contentInput');
-            const saveButton = document.getElementById('saveButton');
-            const searchInput = document.getElementById('searchInput');
-            
-            if (titleInput) {
-                titleInput.addEventListener('input', (e) => {
-                    state.currentTitle = e.target.value;
-                    updateSaveButton();
-                });
-            }
-            
-            if (contentInput) {
-                contentInput.addEventListener('input', (e) => {
-                    state.currentEntry = e.target.value;
-                    updateSaveButton();
-                });
-            }
-            
-            if (saveButton) {
-                saveButton.addEventListener('click', saveEntry);
-                updateSaveButton();
-            }
-            
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    state.searchTerm = e.target.value;
-                    // Don't re-render the entire app, just filter and update the entries section
-                    updateEntriesDisplay();
-                });
-            }
-        }
-
+        // Update entries display without full page reload
         function updateEntriesDisplay() {
             const filteredEntries = state.entries.filter(entry => 
                 entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
@@ -751,16 +560,113 @@ function updateSaveButton() {
             }
         }
 
+        // Render functions
+        function renderWelcomeScreen() {
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+                        <div class="mb-6">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
+                        </div>
+                        
+                        <button
+                            id="connectButton"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
+                        >
+                            Connect MetaMask to Polygon
+                        </button>
+                        
+                        <div id="status" class="mt-4 text-sm text-gray-600"></div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('connectButton').addEventListener('click', connectWallet);
+        }
+
+        function renderMainApp() {
+            const filteredEntries = state.entries.filter(entry => 
+                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
+            );
+
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                    <header class="bg-white shadow-sm border-b">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div class="flex justify-between items-center py-4">
+                                <div class="flex items-center space-x-3">
+                                    <h1 class="text-2xl font-bold text-gray-900">Life Examined</h1>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <div class="text-sm text-gray-600">
+                                        Connected: ${state.walletAddress.slice(0, 6)}...${state.walletAddress.slice(-4)}
+                                    </div>
+                                    <div class="flex items-center space-x-1 text-green-600 text-sm">
+                                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        <span>Polygon Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Re-attach event listeners
+            const titleInput = document.getElementById('titleInput');
+            const contentInput = document.getElementById('contentInput');
+            const saveButton = document.getElementById('saveButton');
+            const searchInput = document.getElementById('searchInput');
+            
+            if (titleInput) {
+                titleInput.addEventListener('input', (e) => {
+                    state.currentTitle = e.target.value;
+                    updateSaveButton();
+                });
+            }
+            
+            if (contentInput) {
+                contentInput.addEventListener('input', (e) => {
+                    state.currentEntry = e.target.value;
+                    updateSaveButton();
+                });
+            }
+            
+            if (saveButton) {
+                saveButton.addEventListener('click', saveEntry);
+                updateSaveButton();
+            }
+            
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    state.searchTerm = e.target.value;
+                    updateEntriesDisplay();
+                });
+            }
+        }
+
+        function updateSaveButton() {
+            const saveButton = document.getElementById('saveButton');
+            if (saveButton) {
+                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
+                saveButton.disabled = isDisabled;
+                if (isDisabled) {
+                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
         // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Life Examined app initializing...');
             
-            // Check MetaMask on load
             if (checkMetaMask()) {
                 updateStatus('MetaMask detected! Click to connect.');
             }
             
-            // Attach initial event listener
             const connectButton = document.getElementById('connectButton');
             if (connectButton) {
                 connectButton.addEventListener('click', connectWallet);
@@ -768,4 +674,86 @@ function updateSaveButton() {
         });
     </script>
 </body>
-</html>
+</html></div>
+                        </div>
+                    </header>
+
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            
+                            <div class="lg:col-span-2">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h2 class="text-xl font-semibold text-gray-900">New Entry</h2>
+                                        <div class="flex items-center space-x-2 text-sm text-gray-500">
+                                            <span>🔒 Encrypted before blockchain</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <input
+                                            type="text"
+                                            id="titleInput"
+                                            placeholder="Entry title..."
+                                            value="${state.currentTitle}"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                        
+                                        <textarea
+                                            id="contentInput"
+                                            placeholder="Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain."
+                                            rows="12"
+                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                        >${state.currentEntry}</textarea>
+                                        
+                                        <button
+                                            id="saveButton"
+                                            class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                                        >
+                                            <span>➕</span>
+                                            <span id="saveButtonText">
+                                                ${state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="lg:col-span-1">
+                                <div class="bg-white rounded-2xl shadow-lg p-6">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h2 class="text-xl font-semibold text-gray-900">Your Entries</h2>
+                                        <span>📖</span>
+                                    </div>
+                                    
+                                    <div class="relative mb-4">
+                                        <input
+                                            type="text"
+                                            id="searchInput"
+                                            placeholder="Search entries..."
+                                            value="${state.searchTerm}"
+                                            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div class="space-y-3 max-h-96 overflow-y-auto">
+                                        ${filteredEntries.length === 0 ? `
+                                            <div class="text-center py-8 text-gray-500">
+                                                <span class="text-4xl">📖</span>
+                                                <p>No entries yet. Start writing!</p>
+                                            </div>
+                                        ` : filteredEntries.map(entry => `
+                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry('${entry.id}')">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
+                                                    <span class="text-green-500">🔒</span>
+                                                </div>
+                                                <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
+                                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                                                    <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
+                                                    <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
