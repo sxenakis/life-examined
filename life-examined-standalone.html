@@ -13,6 +13,34 @@
             -webkit-box-orient: vertical;
             -webkit-line-clamp: 2;
         }
+        .tag-input {
+            min-height: 40px;
+            padding: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+        .tag-chip {
+            background: #3b82f6;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .tag-chip button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 4px;
+        }
     </style>
 </head>
 <body>
@@ -56,7 +84,7 @@
                     {
                         "components": [
                             {"internalType": "string", "name": "ipfsHash", "type": "string"},
-                            {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+                            {"internalType": "uint256", "name": "_timestamp", "type": "uint256"},
                             {"internalType": "string", "name": "title", "type": "string"},
                             {"internalType": "address", "name": "author", "type": "address"}
                         ],
@@ -77,17 +105,38 @@
             }
         ];
 
+        // Predefined categories with emojis
+        const PREDEFINED_CATEGORIES = [
+            { name: 'Personal', emoji: '👤', color: 'bg-blue-100 text-blue-800' },
+            { name: 'Work', emoji: '💼', color: 'bg-green-100 text-green-800' },
+            { name: 'Relationships', emoji: '❤️', color: 'bg-pink-100 text-pink-800' },
+            { name: 'Goals', emoji: '🎯', color: 'bg-purple-100 text-purple-800' },
+            { name: 'Health', emoji: '🏥', color: 'bg-red-100 text-red-800' },
+            { name: 'Travel', emoji: '✈️', color: 'bg-yellow-100 text-yellow-800' },
+            { name: 'Learning', emoji: '📚', color: 'bg-indigo-100 text-indigo-800' },
+            { name: 'Gratitude', emoji: '🙏', color: 'bg-green-100 text-green-800' },
+            { name: 'Reflection', emoji: '🤔', color: 'bg-gray-100 text-gray-800' },
+            { name: 'Ideas', emoji: '💡', color: 'bg-yellow-100 text-yellow-800' }
+        ];
+
         let state = {
             entries: [],
             currentEntry: '',
             currentTitle: '',
+            currentCategory: '',
+            currentTags: [],
             selectedEntry: null,
             isConnected: false,
             walletAddress: '',
             searchTerm: '',
+            selectedCategoryFilter: '',
+            selectedTagFilter: '',
             isUploading: false,
             web3: null,
-            contract: null
+            contract: null,
+            encryptionCache: new Map(),
+            allTags: new Set(),
+            tagInput: ''
         };
 
         function updateStatus(message) {
@@ -107,16 +156,73 @@
             return true;
         }
 
+        function addTag(tag) {
+            if (tag && !state.currentTags.includes(tag)) {
+                state.currentTags.push(tag);
+                state.allTags.add(tag);
+                updateTagsDisplay();
+                updateSaveButton();
+            }
+        }
+
+        function removeTag(tag) {
+            state.currentTags = state.currentTags.filter(t => t !== tag);
+            updateTagsDisplay();
+            updateSaveButton();
+        }
+
+        function updateTagsDisplay() {
+            const tagContainer = document.getElementById('tagContainer');
+            if (!tagContainer) return;
+
+            tagContainer.innerHTML = '';
+            
+            state.currentTags.forEach(tag => {
+                const tagChip = document.createElement('span');
+                tagChip.className = 'tag-chip';
+                tagChip.innerHTML = `${tag} <button onclick="removeTag('${tag}')">×</button>`;
+                tagContainer.appendChild(tagChip);
+            });
+
+            // Add input for new tags
+            const tagInputElement = document.createElement('input');
+            tagInputElement.id = 'tagInputField';
+            tagInputElement.type = 'text';
+            tagInputElement.placeholder = state.currentTags.length === 0 ? 'Add tags...' : '';
+            tagInputElement.className = 'border-none outline-none flex-1 min-w-[100px]';
+            tagInputElement.value = state.tagInput;
+            
+            tagInputElement.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const tag = e.target.value.trim();
+                    if (tag) {
+                        addTag(tag);
+                        e.target.value = '';
+                        state.tagInput = '';
+                    }
+                }
+            });
+            
+            tagInputElement.addEventListener('input', (e) => {
+                state.tagInput = e.target.value;
+            });
+            
+            tagContainer.appendChild(tagInputElement);
+        }
+
         async function uploadToIPFS(encryptedData) {
             try {
                 const ipfsData = {
                     encryptedTitle: encryptedData.encryptedTitle,
                     encryptedContent: encryptedData.encryptedContent,
+                    encryptedCategory: encryptedData.encryptedCategory,
+                    encryptedTags: encryptedData.encryptedTags,
                     timestamp: new Date().toISOString(),
                     signature: encryptedData.signature,
                     message: encryptedData.message,
                     author: state.walletAddress,
-                    version: "1.0"
+                    version: "2.0"
                 };
 
                 console.log('Uploading to IPFS...');
@@ -140,16 +246,24 @@
             }
         }
 
-        async function encryptEntry(content, title) {
+        async function encryptEntry(content, title, category, tags) {
             try {
                 let signature;
+                let message = 'Encrypt journal entry: ' + Date.now();
                 
                 if (typeof window.ethereum !== 'undefined' && state.isConnected) {
-                    const message = 'Encrypt journal entry: ' + Date.now();
-                    signature = await window.ethereum.request({
-                        method: 'personal_sign',
-                        params: [message, state.walletAddress],
-                    });
+                    try {
+                        signature = await window.ethereum.request({
+                            method: 'personal_sign',
+                            params: [message, state.walletAddress],
+                        });
+                        console.log('✅ Got real signature for encryption');
+                    } catch (signError) {
+                        console.log('Signature failed, using fallback:', signError);
+                        signature = '0x' + Array.from({length: 130}, () => 
+                            Math.floor(Math.random() * 16).toString(16)
+                        ).join('');
+                    }
                 } else {
                     signature = '0x' + Array.from({length: 130}, () => 
                         Math.floor(Math.random() * 16).toString(16)
@@ -168,16 +282,205 @@
                 
                 const encryptedTitle = encryptText(title, keyData);
                 const encryptedContent = encryptText(content, keyData);
+                const encryptedCategory = encryptText(category, keyData);
+                const encryptedTags = encryptText(JSON.stringify(tags), keyData);
+                
+                const entryKey = title + '_' + Date.now();
+                state.encryptionCache.set(entryKey, { signature, message });
                 
                 return {
                     encryptedTitle,
                     encryptedContent,
+                    encryptedCategory,
+                    encryptedTags,
                     signature,
-                    message: 'Encrypt journal entry: ' + Date.now()
+                    message,
+                    entryKey
                 };
             } catch (error) {
                 console.error('Encryption failed:', error);
                 throw error;
+            }
+        }
+
+        function decryptEntry(encryptedData, providedSignature = null) {
+            try {
+                const signature = providedSignature || encryptedData.signature;
+                if (!signature) {
+                    throw new Error('No signature available for decryption');
+                }
+                
+                const keyData = signature.slice(2, 66);
+                
+                const decryptText = (encryptedText, key) => {
+                    try {
+                        const decoded = atob(encryptedText);
+                        let result = '';
+                        for (let i = 0; i < decoded.length; i++) {
+                            result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+                        }
+                        return result;
+                    } catch (error) {
+                        console.error('Decryption error:', error);
+                        return '[Decryption Error]';
+                    }
+                };
+                
+                const decryptedTitle = decryptText(encryptedData.encryptedTitle, keyData);
+                const decryptedContent = decryptText(encryptedData.encryptedContent, keyData);
+                const decryptedCategory = encryptedData.encryptedCategory ? 
+                    decryptText(encryptedData.encryptedCategory, keyData) : '';
+                const decryptedTags = encryptedData.encryptedTags ? 
+                    JSON.parse(decryptText(encryptedData.encryptedTags, keyData) || '[]') : [];
+                
+                return {
+                    title: decryptedTitle,
+                    content: decryptedContent,
+                    category: decryptedCategory,
+                    tags: decryptedTags,
+                    success: true
+                };
+            } catch (error) {
+                console.error('Decryption failed:', error);
+                return { 
+                    title: '[Decryption Error]', 
+                    content: '[Unable to decrypt entry - may need to re-sign with your wallet]',
+                    category: '',
+                    tags: [],
+                    success: false
+                };
+            }
+        }
+
+        async function retrieveAndDecryptFromIPFS(ipfsHash, originalTitle) {
+            try {
+                console.log('Retrieving content from IPFS for hash:', ipfsHash);
+                
+                const ipfsUrl = 'https://gateway.pinata.cloud/ipfs/' + ipfsHash;
+                
+                try {
+                    const response = await fetch(ipfsUrl);
+                    if (response.ok) {
+                        const ipfsData = await response.json();
+                        console.log('Retrieved data from IPFS:', ipfsData);
+                        
+                        let decrypted = decryptEntry(ipfsData);
+                        
+                        if (!decrypted.success) {
+                            console.log('Decryption failed, may need fresh signature');
+                            return {
+                                title: originalTitle,
+                                content: 'This entry is encrypted. Click "Decrypt Entry" below to decrypt it with your wallet signature.',
+                                category: '',
+                                tags: [],
+                                isDecrypted: false,
+                                canRetryDecryption: true,
+                                ipfsData: ipfsData
+                            };
+                        }
+                        
+                        // Add tags to global set
+                        if (decrypted.tags) {
+                            decrypted.tags.forEach(tag => state.allTags.add(tag));
+                        }
+                        
+                        return {
+                            title: decrypted.title || originalTitle,
+                            content: decrypted.content,
+                            category: decrypted.category || '',
+                            tags: decrypted.tags || [],
+                            isDecrypted: true,
+                            ipfsData: ipfsData
+                        };
+                    }
+                } catch (ipfsError) {
+                    console.log('IPFS retrieval failed:', ipfsError);
+                }
+                
+                return {
+                    title: originalTitle,
+                    content: 'This entry would show your decrypted journal content here.\n\nThe actual content is encrypted and stored on IPFS at: ' + ipfsHash + '\n\nIn a production version, this would retrieve and decrypt your actual journal text using your private key.',
+                    category: 'Personal',
+                    tags: ['demo'],
+                    isDecrypted: false,
+                    note: 'Demo mode - actual IPFS retrieval would happen in production'
+                };
+                
+            } catch (error) {
+                console.error('Error retrieving from IPFS:', error);
+                return {
+                    title: originalTitle,
+                    content: 'Error retrieving content from IPFS: ' + error.message,
+                    category: '',
+                    tags: [],
+                    isDecrypted: false
+                };
+            }
+        }
+
+        async function decryptEntryWithFreshSignature(entry) {
+            try {
+                if (!state.isConnected || !entry.ipfsData) {
+                    throw new Error('Wallet not connected or no IPFS data available');
+                }
+
+                const message = 'Decrypt journal entry: ' + Date.now();
+                const signature = await window.ethereum.request({
+                    method: 'personal_sign',
+                    params: [message, state.walletAddress],
+                });
+
+                console.log('Got fresh signature for decryption');
+
+                const decrypted = decryptEntry(entry.ipfsData, signature);
+                
+                if (decrypted.success) {
+                    // Add tags to global set
+                    if (decrypted.tags) {
+                        decrypted.tags.forEach(tag => state.allTags.add(tag));
+                    }
+                    
+                    const entryIndex = state.entries.findIndex(e => e.id === entry.id);
+                    if (entryIndex !== -1) {
+                        state.entries[entryIndex] = {
+                            ...state.entries[entryIndex],
+                            title: decrypted.title,
+                            content: decrypted.content,
+                            category: decrypted.category,
+                            tags: decrypted.tags,
+                            isDecrypted: true
+                        };
+                        
+                        if (state.selectedEntry && state.selectedEntry.id === entry.id) {
+                            state.selectedEntry = state.entries[entryIndex];
+                        }
+                    }
+                    
+                    updateEntriesDisplay();
+                    updateFilters();
+                    if (state.selectedEntry) {
+                        showEntryModal();
+                    }
+                    
+                    return {
+                        success: true,
+                        title: decrypted.title,
+                        content: decrypted.content,
+                        category: decrypted.category,
+                        tags: decrypted.tags
+                    };
+                } else {
+                    throw new Error('Decryption failed even with fresh signature');
+                }
+
+            } catch (error) {
+                console.error('Fresh decryption failed:', error);
+                if (error.code === 4001) {
+                    alert('Decryption cancelled by user');
+                } else {
+                    alert('Failed to decrypt entry: ' + error.message);
+                }
+                return { success: false };
             }
         }
 
@@ -344,18 +647,50 @@
                         console.log('Raw blockchain entries:', blockchainEntries);
                         
                         if (blockchainEntries && blockchainEntries.length > 0) {
-                            state.entries = blockchainEntries.map((entry, index) => ({
-                                id: entry.timestamp + index,
-                                title: entry.title || ('Entry ' + new Date(entry.timestamp * 1000).toLocaleDateString()),
-                                content: 'Encrypted entry stored on IPFS: ' + entry.ipfsHash,
-                                timestamp: new Date(entry.timestamp * 1000).toISOString(),
-                                encrypted: true,
-                                onChain: true,
-                                ipfsHash: entry.ipfsHash,
-                                txHash: 'On blockchain'
-                            }));
+                            const processedEntries = await Promise.all(
+                                blockchainEntries.map(async (entry, index) => {
+                                    let displayTitle = entry.title || ('Entry ' + new Date(entry.timestamp * 1000).toLocaleDateString());
+                                    let displayContent = 'Encrypted entry stored on IPFS: ' + entry.ipfsHash;
+                                    let displayCategory = '';
+                                    let displayTags = [];
+                                    let isDecrypted = false;
+                                    let ipfsData = null;
+                                    let canRetryDecryption = false;
+                                    
+                                    try {
+                                        const decryptedData = await retrieveAndDecryptFromIPFS(entry.ipfsHash, displayTitle);
+                                        displayTitle = decryptedData.title;
+                                        displayContent = decryptedData.content;
+                                        displayCategory = decryptedData.category;
+                                        displayTags = decryptedData.tags;
+                                        isDecrypted = decryptedData.isDecrypted;
+                                        ipfsData = decryptedData.ipfsData;
+                                        canRetryDecryption = decryptedData.canRetryDecryption;
+                                    } catch (decryptError) {
+                                        console.log('Could not decrypt entry:', decryptError);
+                                    }
+
+                                    return {
+                                        id: entry.timestamp + index,
+                                        title: displayTitle,
+                                        content: displayContent,
+                                        category: displayCategory,
+                                        tags: displayTags,
+                                        timestamp: new Date(entry.timestamp * 1000).toISOString(),
+                                        encrypted: true,
+                                        onChain: true,
+                                        ipfsHash: entry.ipfsHash,
+                                        txHash: 'On blockchain',
+                                        originalEntry: entry,
+                                        isDecrypted: isDecrypted,
+                                        ipfsData: ipfsData,
+                                        canRetryDecryption: canRetryDecryption
+                                    };
+                                })
+                            );
                             
-                            console.log('✅ Loaded ' + state.entries.length + ' entries from blockchain');
+                            state.entries = processedEntries;
+                            console.log('✅ Loaded and processed ' + state.entries.length + ' entries from blockchain');
                         } else {
                             console.log('No entries found on blockchain for this wallet');
                             state.entries = [];
@@ -386,7 +721,12 @@
             
             try {
                 console.log('Step 1: Encrypting entry...');
-                const encryptedData = await encryptEntry(state.currentEntry, state.currentTitle);
+                const encryptedData = await encryptEntry(
+                    state.currentEntry, 
+                    state.currentTitle, 
+                    state.currentCategory,
+                    state.currentTags
+                );
                 
                 console.log('Step 2: Uploading to IPFS...');
                 const ipfsResult = await uploadToIPFS(encryptedData);
@@ -399,21 +739,31 @@
                 );
                 
                 console.log('Step 4: Creating entry record...');
+                
+                // Add tags to global set
+                state.currentTags.forEach(tag => state.allTags.add(tag));
+                
                 const newEntry = {
                     id: Date.now(),
                     title: state.currentTitle,
                     content: state.currentEntry,
+                    category: state.currentCategory,
+                    tags: [...state.currentTags],
                     timestamp: new Date().toISOString(),
                     encrypted: true,
                     onChain: true,
                     ipfsHash: ipfsResult.IpfsHash,
                     ipfsSize: ipfsResult.PinSize,
-                    txHash: txHash
+                    txHash: txHash,
+                    isDecrypted: true
                 };
                 
                 state.entries.unshift(newEntry);
                 state.currentEntry = '';
                 state.currentTitle = '';
+                state.currentCategory = '';
+                state.currentTags = [];
+                state.tagInput = '';
                 
                 console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
                 console.log('🎉 Your journal entry is now completely decentralized!');
@@ -426,6 +776,7 @@
             } finally {
                 state.isUploading = false;
                 renderMainApp();
+                updateFilters();
             }
         }
 
@@ -435,6 +786,11 @@
                 state.selectedEntry = entry;
                 showEntryModal();
             }
+        }
+
+        function getCategoryInfo(categoryName) {
+            return PREDEFINED_CATEGORIES.find(cat => cat.name === categoryName) || 
+                   { name: categoryName, emoji: '📝', color: 'bg-gray-100 text-gray-800' };
         }
 
         function showEntryModal() {
@@ -449,33 +805,80 @@
             const modalInner = document.createElement('div');
             modalInner.className = 'p-6';
             
+            const isDecrypted = state.selectedEntry.isDecrypted;
+            const canRetryDecryption = state.selectedEntry.canRetryDecryption;
+            
+            let statusContent = '';
+            let actionButtons = '';
+            
+            if (isDecrypted) {
+                statusContent = '<div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">' +
+                    '<p class="text-sm text-green-800">' +
+                        '<strong>✅ Decrypted:</strong> This entry has been successfully decrypted using your private key.' +
+                    '</p>' +
+                '</div>';
+            } else if (canRetryDecryption) {
+                statusContent = '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">' +
+                    '<p class="text-sm text-yellow-800">' +
+                        '<strong>🔒 Encrypted:</strong> This entry is encrypted. Click the button below to decrypt it with your wallet signature.' +
+                    '</p>' +
+                '</div>';
+                actionButtons = '<button onclick="decryptCurrentEntry()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors mr-2">🔓 Decrypt Entry</button>';
+            } else {
+                statusContent = '<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">' +
+                    '<p class="text-sm text-blue-800">' +
+                        '<strong>Note:</strong> This entry is encrypted and stored on IPFS. ' +
+                        'In a production environment, this would be automatically decrypted.' +
+                    '</p>' +
+                '</div>';
+            }
+
+            // Category display
+            const categoryInfo = getCategoryInfo(state.selectedEntry.category);
+            const categoryDisplay = state.selectedEntry.category ? 
+                `<div class="flex items-center space-x-1">
+                    <span>${categoryInfo.emoji}</span>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${categoryInfo.color}">${state.selectedEntry.category}</span>
+                </div>` : '';
+
+            // Tags display
+            const tagsDisplay = state.selectedEntry.tags && state.selectedEntry.tags.length > 0 ? 
+                `<div class="flex flex-wrap gap-1">
+                    ${state.selectedEntry.tags.map(tag => 
+                        `<span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">#${tag}</span>`
+                    ).join('')}
+                </div>` : '';
+            
             modalInner.innerHTML = 
                 '<div class="flex items-center justify-between mb-4">' +
                     '<h2 class="text-2xl font-bold text-gray-900">' + state.selectedEntry.title + '</h2>' +
                     '<button onclick="closeEntryModal()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>' +
                 '</div>' +
-                '<div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">' +
+                '<div class="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">' +
                     '<div class="flex items-center space-x-1">' +
                         '<span>📅</span>' +
                         '<span>' + new Date(state.selectedEntry.timestamp).toLocaleString() + '</span>' +
                     '</div>' +
                     '<div class="flex items-center space-x-1">' +
                         '<span>🔒</span>' +
-                        '<span>Encrypted</span>' +
+                        '<span>' + (isDecrypted ? 'Decrypted' : 'Encrypted') + '</span>' +
                     '</div>' +
                     '<div class="flex items-center space-x-1">' +
                         '<span>⛓️</span>' +
                         '<span>On Blockchain</span>' +
                     '</div>' +
                 '</div>' +
+                (categoryDisplay ? '<div class="mb-4">' + categoryDisplay + '</div>' : '') +
+                (tagsDisplay ? '<div class="mb-4">' + tagsDisplay + '</div>' : '') +
                 '<div class="prose max-w-none">' +
-                    '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">' +
-                        '<p class="text-sm text-yellow-800">' +
-                            '<strong>Note:</strong> This entry is encrypted and stored on IPFS. ' +
-                            'To view the actual content, you would need to retrieve and decrypt it from IPFS using your private key.' +
-                        '</p>' +
+                    statusContent +
+                    '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4">' +
+                        '<p class="whitespace-pre-wrap text-gray-700 leading-relaxed">' + state.selectedEntry.content + '</p>' +
                     '</div>' +
-                    '<p class="whitespace-pre-wrap text-gray-700 leading-relaxed">' + state.selectedEntry.content + '</p>' +
+                '</div>' +
+                '<div class="mt-6 flex items-center space-x-2">' +
+                    actionButtons +
+                    '<button onclick="closeEntryModal()" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors">Close</button>' +
                 '</div>' +
                 '<div class="mt-6 pt-4 border-t border-gray-200">' +
                     '<div class="text-xs text-gray-500 space-y-1">' +
@@ -490,11 +893,37 @@
             document.body.appendChild(modal);
         }
 
+        window.decryptCurrentEntry = async function() {
+            if (state.selectedEntry) {
+                const result = await decryptEntryWithFreshSignature(state.selectedEntry);
+                if (result.success) {
+                    showEntryModal();
+                }
+            }
+        };
+
         function closeEntryModal() {
             const modal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
             if (modal) {
                 modal.remove();
                 state.selectedEntry = null;
+            }
+        }
+
+        function updateFilters() {
+            const categoryFilter = document.getElementById('categoryFilter');
+            const tagFilter = document.getElementById('tagFilter');
+            
+            if (categoryFilter) {
+                const categories = [...new Set(state.entries.map(e => e.category).filter(c => c))];
+                categoryFilter.innerHTML = '<option value="">All Categories</option>' +
+                    categories.map(cat => `<option value="${cat}" ${cat === state.selectedCategoryFilter ? 'selected' : ''}>${cat}</option>`).join('');
+            }
+            
+            if (tagFilter) {
+                const tags = Array.from(state.allTags);
+                tagFilter.innerHTML = '<option value="">All Tags</option>' +
+                    tags.map(tag => `<option value="${tag}" ${tag === state.selectedTagFilter ? 'selected' : ''}>#${tag}</option>`).join('');
             }
         }
 
@@ -607,11 +1036,39 @@
                 state.currentTitle = e.target.value;
                 updateSaveButton();
             });
+
+            // Category selector
+            const categoryDiv = document.createElement('div');
+            categoryDiv.innerHTML = '<label class="block text-sm font-medium text-gray-700 mb-2">Category</label>';
+            
+            const categorySelect = document.createElement('select');
+            categorySelect.id = 'categorySelect';
+            categorySelect.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+            categorySelect.innerHTML = '<option value="">Select a category...</option>' +
+                PREDEFINED_CATEGORIES.map(cat => 
+                    `<option value="${cat.name}" ${cat.name === state.currentCategory ? 'selected' : ''}>${cat.emoji} ${cat.name}</option>`
+                ).join('');
+            categorySelect.addEventListener('change', (e) => {
+                state.currentCategory = e.target.value;
+                updateSaveButton();
+            });
+            
+            categoryDiv.appendChild(categorySelect);
+
+            // Tags input
+            const tagsDiv = document.createElement('div');
+            tagsDiv.innerHTML = '<label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>';
+            
+            const tagContainer = document.createElement('div');
+            tagContainer.id = 'tagContainer';
+            tagContainer.className = 'tag-input';
+            
+            tagsDiv.appendChild(tagContainer);
             
             const contentInput = document.createElement('textarea');
             contentInput.id = 'contentInput';
             contentInput.placeholder = 'Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain.';
-            contentInput.rows = 12;
+            contentInput.rows = 10;
             contentInput.value = state.currentEntry;
             contentInput.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none';
             contentInput.addEventListener('input', (e) => {
@@ -627,6 +1084,8 @@
             saveButton.addEventListener('click', saveEntry);
             
             formDiv.appendChild(titleInput);
+            formDiv.appendChild(categoryDiv);
+            formDiv.appendChild(tagsDiv);
             formDiv.appendChild(contentInput);
             formDiv.appendChild(saveButton);
             newEntryCard.appendChild(newEntryHeader);
@@ -644,27 +1103,47 @@
             entriesHeader.className = 'flex items-center justify-between mb-4';
             entriesHeader.innerHTML = '<h2 class="text-xl font-semibold text-gray-900">Your Entries</h2><span>📖</span>';
             
-            const searchDiv = document.createElement('div');
-            searchDiv.className = 'relative mb-4';
+            // Filters section
+            const filtersDiv = document.createElement('div');
+            filtersDiv.className = 'space-y-3 mb-4';
             
             const searchInput = document.createElement('input');
             searchInput.type = 'text';
             searchInput.id = 'searchInput';
             searchInput.placeholder = 'Search entries...';
             searchInput.value = state.searchTerm;
-            searchInput.className = 'w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+            searchInput.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
             searchInput.addEventListener('input', (e) => {
                 state.searchTerm = e.target.value;
                 updateEntriesDisplay();
             });
+
+            const categoryFilter = document.createElement('select');
+            categoryFilter.id = 'categoryFilter';
+            categoryFilter.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+            categoryFilter.addEventListener('change', (e) => {
+                state.selectedCategoryFilter = e.target.value;
+                updateEntriesDisplay();
+            });
+
+            const tagFilter = document.createElement('select');
+            tagFilter.id = 'tagFilter';
+            tagFilter.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+            tagFilter.addEventListener('change', (e) => {
+                state.selectedTagFilter = e.target.value;
+                updateEntriesDisplay();
+            });
+            
+            filtersDiv.appendChild(searchInput);
+            filtersDiv.appendChild(categoryFilter);
+            filtersDiv.appendChild(tagFilter);
             
             const entriesContainer = document.createElement('div');
             entriesContainer.className = 'space-y-3 max-h-96 overflow-y-auto';
             entriesContainer.id = 'entriesContainer';
             
-            searchDiv.appendChild(searchInput);
             entriesCard.appendChild(entriesHeader);
-            entriesCard.appendChild(searchDiv);
+            entriesCard.appendChild(filtersDiv);
             entriesCard.appendChild(entriesContainer);
             entriesSection.appendChild(entriesCard);
 
@@ -675,7 +1154,9 @@
             mainContainer.appendChild(mainContent);
             app.appendChild(mainContainer);
 
+            updateTagsDisplay();
             updateEntriesDisplay();
+            updateFilters();
             updateSaveButton();
         }
 
@@ -683,34 +1164,65 @@
             const entriesContainer = document.getElementById('entriesContainer');
             if (!entriesContainer) return;
 
-            const filteredEntries = state.entries.filter(entry => 
-                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
-                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
-            );
+            let filteredEntries = state.entries.filter(entry => {
+                const matchesSearch = !state.searchTerm || 
+                    entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                    entry.content.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
+                    (entry.tags && entry.tags.some(tag => tag.toLowerCase().includes(state.searchTerm.toLowerCase())));
+                
+                const matchesCategory = !state.selectedCategoryFilter || entry.category === state.selectedCategoryFilter;
+                
+                const matchesTag = !state.selectedTagFilter || 
+                    (entry.tags && entry.tags.includes(state.selectedTagFilter));
+                
+                return matchesSearch && matchesCategory && matchesTag;
+            });
 
             entriesContainer.innerHTML = '';
 
             if (filteredEntries.length === 0) {
                 const emptyDiv = document.createElement('div');
                 emptyDiv.className = 'text-center py-8 text-gray-500';
-                const message = state.searchTerm ? 'No matching entries found.' : 'No entries yet. Start writing!';
+                let message = 'No entries found.';
+                if (state.entries.length === 0) {
+                    message = 'No entries yet. Start writing!';
+                } else if (state.searchTerm || state.selectedCategoryFilter || state.selectedTagFilter) {
+                    message = 'No matching entries found.';
+                }
                 emptyDiv.innerHTML = '<span class="text-4xl">📖</span><p>' + message + '</p>';
                 entriesContainer.appendChild(emptyDiv);
             } else {
                 filteredEntries.forEach(entry => {
                     const entryDiv = document.createElement('div');
-                    entryDiv.className = 'p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors';
+                    entryDiv.className = 'p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors';
                     entryDiv.addEventListener('click', () => viewEntry(entry.id));
                     
+                    const statusIcon = entry.isDecrypted ? '🔓' : (entry.canRetryDecryption ? '🔒' : '🔐');
+                    const statusColor = entry.isDecrypted ? 'text-green-500' : (entry.canRetryDecryption ? 'text-yellow-500' : 'text-gray-500');
+                    
+                    const categoryInfo = getCategoryInfo(entry.category);
+                    const categoryDisplay = entry.category ? 
+                        `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${categoryInfo.color}">${categoryInfo.emoji} ${entry.category}</span>` : '';
+                    
+                    const tagsDisplay = entry.tags && entry.tags.length > 0 ? 
+                        `<div class="flex flex-wrap gap-1 mt-2">
+                            ${entry.tags.slice(0, 3).map(tag => 
+                                `<span class="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">#${tag}</span>`
+                            ).join('')}
+                            ${entry.tags.length > 3 ? `<span class="text-xs text-gray-500">+${entry.tags.length - 3}</span>` : ''}
+                        </div>` : '';
+                    
                     entryDiv.innerHTML = 
-                        '<div class="flex items-center justify-between mb-2">' +
-                            '<h3 class="font-medium text-gray-900 truncate">' + entry.title + '</h3>' +
-                            '<span class="text-green-500">🔒</span>' +
+                        '<div class="flex items-start justify-between mb-2">' +
+                            '<h3 class="font-medium text-gray-900 truncate flex-1 mr-2">' + entry.title + '</h3>' +
+                            '<span class="' + statusColor + ' flex-shrink-0">' + statusIcon + '</span>' +
                         '</div>' +
-                        '<p class="text-sm text-gray-600 line-clamp-2">' + entry.content + '</p>' +
+                        (categoryDisplay ? '<div class="mb-2">' + categoryDisplay + '</div>' : '') +
+                        '<p class="text-sm text-gray-600 line-clamp-2 mb-2">' + entry.content + '</p>' +
+                        tagsDisplay +
                         '<div class="flex items-center justify-between mt-2 text-xs text-gray-500">' +
                             '<span>' + new Date(entry.timestamp).toLocaleDateString() + '</span>' +
-                            '<span>IPFS: ' + entry.ipfsHash.slice(0, 8) + '...</span>' +
+                            '<span>IPFS: ' + entry.ipfsHash.slice(0, 6) + '...</span>' +
                         '</div>';
                     
                     entriesContainer.appendChild(entryDiv);
@@ -731,8 +1243,12 @@
             }
         }
 
+        // Global functions
+        window.closeEntryModal = closeEntryModal;
+        window.removeTag = removeTag;
+
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Life Examined app initializing...');
+            console.log('Life Examined app with tags and categories initializing...');
             
             if (checkMetaMask()) {
                 updateStatus('MetaMask detected! Click to connect.');
