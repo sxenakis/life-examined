@@ -690,13 +690,33 @@
                                         console.log('Could not decrypt entry:', decryptError);
                                     }
 
+                                    // Safe timestamp conversion
+                                    let entryTimestamp;
+                                    try {
+                                        // Handle both seconds and milliseconds timestamps
+                                        let timestampMs = entry.timestamp;
+                                        if (timestampMs < 1000000000000) { // If timestamp is in seconds
+                                            timestampMs = timestampMs * 1000;
+                                        }
+                                        entryTimestamp = new Date(timestampMs).toISOString();
+                                        
+                                        // Validate the timestamp
+                                        if (entryTimestamp === 'Invalid Date' || isNaN(new Date(timestampMs).getTime())) {
+                                            throw new Error('Invalid timestamp: ' + entry.timestamp);
+                                        }
+                                    } catch (timestampError) {
+                                        console.warn('Invalid timestamp detected:', entry.timestamp, timestampError);
+                                        // Use current time as fallback
+                                        entryTimestamp = new Date().toISOString();
+                                    }
+
                                     return {
-                                        id: entry.timestamp * 1000 + index, // Use timestamp in milliseconds for unique ID
+                                        id: (entry.timestamp || Date.now()) * 1000 + index, // Use timestamp in milliseconds for unique ID
                                         title: displayTitle,
                                         content: displayContent,
                                         category: displayCategory,
                                         tags: displayTags,
-                                        timestamp: new Date(entry.timestamp * 1000).toISOString(),
+                                        timestamp: entryTimestamp,
                                         encrypted: true,
                                         onChain: true,
                                         ipfsHash: entry.ipfsHash,
