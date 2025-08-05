@@ -669,13 +669,46 @@
                         if (blockchainEntries && blockchainEntries.length > 0) {
                             const processedEntries = await Promise.all(
                                 blockchainEntries.map(async (entry, index) => {
-                                    let displayTitle = entry.title || ('Entry ' + new Date(entry.timestamp * 1000).toLocaleDateString());
+                                    console.log('Processing entry:', index, 'with timestamp:', entry.timestamp);
+                                    
+                                    let displayTitle = entry.title || ('Entry ' + new Date().toLocaleDateString());
                                     let displayContent = 'Encrypted entry stored on IPFS: ' + entry.ipfsHash;
                                     let displayCategory = '';
                                     let displayTags = [];
                                     let isDecrypted = false;
                                     let ipfsData = null;
                                     let canRetryDecryption = false;
+                                    
+                                    // Safe timestamp conversion BEFORE any other processing
+                                    let entryTimestamp;
+                                    let timestampMs;
+                                    try {
+                                        // Handle both seconds and milliseconds timestamps
+                                        timestampMs = Number(entry.timestamp);
+                                        
+                                        if (isNaN(timestampMs) || timestampMs === 0) {
+                                            throw new Error('Invalid timestamp: ' + entry.timestamp);
+                                        }
+                                        
+                                        if (timestampMs < 1000000000000) { // If timestamp is in seconds
+                                            timestampMs = timestampMs * 1000;
+                                        }
+                                        
+                                        const testDate = new Date(timestampMs);
+                                        if (isNaN(testDate.getTime())) {
+                                            throw new Error('Invalid date from timestamp: ' + entry.timestamp);
+                                        }
+                                        
+                                        entryTimestamp = testDate.toISOString();
+                                        displayTitle = entry.title || ('Entry ' + testDate.toLocaleDateString());
+                                    } catch (timestampError) {
+                                        console.warn('Invalid timestamp detected for entry', index, ':', entry.timestamp, timestampError);
+                                        // Use current time as fallback
+                                        const fallbackDate = new Date();
+                                        entryTimestamp = fallbackDate.toISOString();
+                                        timestampMs = fallbackDate.getTime();
+                                        displayTitle = entry.title || ('Entry ' + fallbackDate.toLocaleDateString());
+                                    }
                                     
                                     try {
                                         const decryptedData = await retrieveAndDecryptFromIPFS(entry.ipfsHash, displayTitle);
@@ -690,28 +723,8 @@
                                         console.log('Could not decrypt entry:', decryptError);
                                     }
 
-                                    // Safe timestamp conversion
-                                    let entryTimestamp;
-                                    try {
-                                        // Handle both seconds and milliseconds timestamps
-                                        let timestampMs = entry.timestamp;
-                                        if (timestampMs < 1000000000000) { // If timestamp is in seconds
-                                            timestampMs = timestampMs * 1000;
-                                        }
-                                        entryTimestamp = new Date(timestampMs).toISOString();
-                                        
-                                        // Validate the timestamp
-                                        if (entryTimestamp === 'Invalid Date' || isNaN(new Date(timestampMs).getTime())) {
-                                            throw new Error('Invalid timestamp: ' + entry.timestamp);
-                                        }
-                                    } catch (timestampError) {
-                                        console.warn('Invalid timestamp detected:', entry.timestamp, timestampError);
-                                        // Use current time as fallback
-                                        entryTimestamp = new Date().toISOString();
-                                    }
-
                                     return {
-                                        id: (entry.timestamp || Date.now()) * 1000 + index, // Use timestamp in milliseconds for unique ID
+                                        id: timestampMs + index, // Use safe timestamp for unique ID
                                         title: displayTitle,
                                         content: displayContent,
                                         category: displayCategory,
