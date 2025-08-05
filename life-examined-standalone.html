@@ -36,7 +36,6 @@
     </div>
 
     <script>
-        // Your deployed contract details
         const CONTRACT_ADDRESS = '0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A';
         const CONTRACT_ABI = [
             {
@@ -78,7 +77,6 @@
             }
         ];
 
-        // App state
         let state = {
             entries: [],
             currentEntry: '',
@@ -92,7 +90,6 @@
             contract: null
         };
 
-        // Update status message
         function updateStatus(message) {
             const statusDiv = document.getElementById('status');
             if (statusDiv) {
@@ -101,7 +98,6 @@
             }
         }
 
-        // Check if MetaMask is available
         function checkMetaMask() {
             if (typeof window.ethereum === 'undefined') {
                 updateStatus('MetaMask not detected. Please install MetaMask.');
@@ -111,7 +107,6 @@
             return true;
         }
 
-        // IPFS Upload Function
         async function uploadToIPFS(encryptedData) {
             try {
                 const ipfsData = {
@@ -124,8 +119,6 @@
                     version: "1.0"
                 };
 
-                const jsonData = JSON.stringify(ipfsData);
-                
                 console.log('Uploading to IPFS...');
                 const mockHash = 'Qm' + Array.from({length: 44}, () => 
                     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
@@ -137,7 +130,7 @@
                 
                 return {
                     IpfsHash: mockHash,
-                    PinSize: jsonData.length,
+                    PinSize: JSON.stringify(ipfsData).length,
                     Timestamp: new Date().toISOString()
                 };
 
@@ -147,13 +140,12 @@
             }
         }
 
-        // Encryption function
         async function encryptEntry(content, title) {
             try {
                 let signature;
                 
                 if (typeof window.ethereum !== 'undefined' && state.isConnected) {
-                    const message = `Encrypt journal entry: ${Date.now()}`;
+                    const message = 'Encrypt journal entry: ' + Date.now();
                     signature = await window.ethereum.request({
                         method: 'personal_sign',
                         params: [message, state.walletAddress],
@@ -181,7 +173,7 @@
                     encryptedTitle,
                     encryptedContent,
                     signature,
-                    message: `Encrypt journal entry: ${Date.now()}`
+                    message: 'Encrypt journal entry: ' + Date.now()
                 };
             } catch (error) {
                 console.error('Encryption failed:', error);
@@ -189,7 +181,6 @@
             }
         }
 
-        // Store on blockchain with proper gas estimation and error handling
         async function storeOnBlockchain(ipfsHash, title, timestamp) {
             try {
                 if (!state.contract || !state.isConnected) {
@@ -197,9 +188,7 @@
                 }
 
                 console.log('Preparing blockchain transaction...');
-                console.log('Parameters:', { ipfsHash, title, timestamp });
 
-                // First, test if contract is accessible
                 try {
                     const totalEntries = await state.contract.methods.totalEntries().call();
                     console.log('Contract is accessible. Current total entries:', totalEntries);
@@ -208,7 +197,6 @@
                     throw new Error('Cannot communicate with smart contract');
                 }
 
-                // Estimate gas for the transaction
                 let gasEstimate;
                 try {
                     gasEstimate = await state.contract.methods.storeEntry(
@@ -224,15 +212,9 @@
                     console.log('Using default gas limit:', gasEstimate);
                 }
 
-                // Get current gas price
                 const gasPrice = await state.web3.eth.getGasPrice();
-                console.log('Gas price:', gasPrice);
-
-                // Add 20% buffer to gas estimate
                 const gasLimit = Math.floor(gasEstimate * 1.2);
-                console.log('Gas limit with buffer:', gasLimit);
 
-                // Send the transaction
                 console.log('Sending blockchain transaction...');
                 const tx = await state.contract.methods.storeEntry(
                     ipfsHash,
@@ -246,7 +228,6 @@
                 
                 console.log('✅ Real blockchain transaction successful!');
                 console.log('Transaction Hash:', tx.transactionHash);
-                console.log('Gas used:', tx.gasUsed);
                 
                 return tx.transactionHash;
                 
@@ -259,15 +240,12 @@
                     throw new Error('Insufficient POL for gas fees. Please add more POL to your wallet.');
                 } else if (error.code === 4001) {
                     throw new Error('Transaction was cancelled by user.');
-                } else if (error.message.includes('nonce')) {
-                    throw new Error('Transaction nonce error. Please try again.');
                 } else {
-                    throw new Error(`Transaction failed: ${error.message}`);
+                    throw new Error('Transaction failed: ' + error.message);
                 }
             }
         }
 
-        // Connect wallet
         async function connectWallet() {
             updateStatus('Checking MetaMask...');
             
@@ -331,8 +309,6 @@
                     }
                     
                     console.log('✅ Connected to Polygon with real MetaMask!');
-                    console.log('Contract Address:', CONTRACT_ADDRESS);
-                    console.log('Wallet Address:', state.walletAddress);
                     
                     await loadEntries();
                     renderMainApp();
@@ -355,7 +331,6 @@
             }
         }
 
-        // Load entries from blockchain ONLY
         async function loadEntries() {
             try {
                 if (state.contract && state.isConnected) {
@@ -371,8 +346,8 @@
                         if (blockchainEntries && blockchainEntries.length > 0) {
                             state.entries = blockchainEntries.map((entry, index) => ({
                                 id: entry.timestamp + index,
-                                title: entry.title || `Entry ${new Date(entry.timestamp * 1000).toLocaleDateString()}`,
-                                content: `Encrypted entry stored on IPFS: ${entry.ipfsHash}`,
+                                title: entry.title || ('Entry ' + new Date(entry.timestamp * 1000).toLocaleDateString()),
+                                content: 'Encrypted entry stored on IPFS: ' + entry.ipfsHash,
                                 timestamp: new Date(entry.timestamp * 1000).toISOString(),
                                 encrypted: true,
                                 onChain: true,
@@ -380,7 +355,7 @@
                                 txHash: 'On blockchain'
                             }));
                             
-                            console.log(`✅ Loaded ${state.entries.length} entries from blockchain`);
+                            console.log('✅ Loaded ' + state.entries.length + ' entries from blockchain');
                         } else {
                             console.log('No entries found on blockchain for this wallet');
                             state.entries = [];
@@ -400,7 +375,6 @@
             }
         }
 
-        // Save entry with improved error handling
         async function saveEntry() {
             if (!state.currentTitle.trim() || !state.currentEntry.trim()) {
                 alert('Please enter both a title and content for your journal entry.');
@@ -442,54 +416,19 @@
                 state.currentTitle = '';
                 
                 console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
-                console.log('IPFS Hash:', ipfsResult.IpfsHash);
-                console.log('Transaction Hash:', txHash);
                 console.log('🎉 Your journal entry is now completely decentralized!');
                 
                 alert('🎉 Journal entry successfully saved to blockchain!');
                 
             } catch (error) {
                 console.error('Failed to save entry:', error);
-                alert('Failed to save entry: ' + error.message + '\n\nPlease check the console for more details and try again.');
+                alert('Failed to save entry: ' + error.message);
             } finally {
                 state.isUploading = false;
                 renderMainApp();
             }
         }
 
-        // Update entries display without full page reload
-        function updateEntriesDisplay() {
-            const filteredEntries = state.entries.filter(entry => 
-                entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
-                entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
-            );
-
-            const entriesContainer = document.querySelector('.space-y-3.max-h-96.overflow-y-auto');
-            if (entriesContainer) {
-                let entriesHTML = '';
-                if (filteredEntries.length === 0) {
-                    const message = state.searchTerm ? 'No matching entries found.' : 'No entries yet. Start writing!';
-                    entriesHTML = '<div class="text-center py-8 text-gray-500"><span class="text-4xl">📖</span><p>' + message + '</p></div>';
-                } else {
-                    entriesHTML = filteredEntries.map(entry => {
-                        return '<div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry(\'' + entry.id + '\')">' +
-                            '<div class="flex items-center justify-between mb-2">' +
-                            '<h3 class="font-medium text-gray-900 truncate">' + entry.title + '</h3>' +
-                            '<span class="text-green-500">🔒</span>' +
-                            '</div>' +
-                            '<p class="text-sm text-gray-600 line-clamp-2">' + entry.content + '</p>' +
-                            '<div class="flex items-center justify-between mt-2 text-xs text-gray-500">' +
-                            '<span>' + new Date(entry.timestamp).toLocaleDateString() + '</span>' +
-                            '<span>IPFS: ' + entry.ipfsHash.slice(0, 8) + '...</span>' +
-                            '</div>' +
-                            '</div>';
-                    }).join('');
-                }
-                entriesContainer.innerHTML = entriesHTML;
-            }
-        }
-
-        // Function to view individual entries
         function viewEntry(entryId) {
             const entry = state.entries.find(e => e.id == entryId);
             if (entry) {
@@ -498,56 +437,59 @@
             }
         }
 
-        // Show entry modal
         function showEntryModal() {
             if (!state.selectedEntry) return;
 
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50';
-            modal.innerHTML = 
-                '<div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">' +
-                    '<div class="p-6">' +
-                        '<div class="flex items-center justify-between mb-4">' +
-                            '<h2 class="text-2xl font-bold text-gray-900">' + state.selectedEntry.title + '</h2>' +
-                            '<button onclick="closeEntryModal()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>' +
-                        '</div>' +
-                        '<div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">' +
-                            '<div class="flex items-center space-x-1">' +
-                                '<span>📅</span>' +
-                                '<span>' + new Date(state.selectedEntry.timestamp).toLocaleString() + '</span>' +
-                            '</div>' +
-                            '<div class="flex items-center space-x-1">' +
-                                '<span>🔒</span>' +
-                                '<span>Encrypted</span>' +
-                            '</div>' +
-                            '<div class="flex items-center space-x-1">' +
-                                '<span>⛓️</span>' +
-                                '<span>On Blockchain</span>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="prose max-w-none">' +
-                            '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">' +
-                                '<p class="text-sm text-yellow-800">' +
-                                    '<strong>Note:</strong> This entry is encrypted and stored on IPFS. ' +
-                                    'To view the actual content, you would need to retrieve and decrypt it from IPFS using your private key.' +
-                                '</p>' +
-                            '</div>' +
-                            '<p class="whitespace-pre-wrap text-gray-700 leading-relaxed">' + state.selectedEntry.content + '</p>' +
-                        '</div>' +
-                        '<div class="mt-6 pt-4 border-t border-gray-200">' +
-                            '<div class="text-xs text-gray-500 space-y-1">' +
-                                '<div><strong>IPFS Hash:</strong> ' + state.selectedEntry.ipfsHash + '</div>' +
-                                '<div><strong>Transaction:</strong> ' + state.selectedEntry.txHash + '</div>' +
-                                '<div><strong>Entry Size:</strong> ' + (state.selectedEntry.ipfsSize || 'Unknown') + ' bytes</div>' +
-                            '</div>' +
-                        '</div>' +
+            
+            const modalContent = document.createElement('div');
+            modalContent.className = 'bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto';
+            
+            const modalInner = document.createElement('div');
+            modalInner.className = 'p-6';
+            
+            modalInner.innerHTML = 
+                '<div class="flex items-center justify-between mb-4">' +
+                    '<h2 class="text-2xl font-bold text-gray-900">' + state.selectedEntry.title + '</h2>' +
+                    '<button onclick="closeEntryModal()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>' +
+                '</div>' +
+                '<div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">' +
+                    '<div class="flex items-center space-x-1">' +
+                        '<span>📅</span>' +
+                        '<span>' + new Date(state.selectedEntry.timestamp).toLocaleString() + '</span>' +
+                    '</div>' +
+                    '<div class="flex items-center space-x-1">' +
+                        '<span>🔒</span>' +
+                        '<span>Encrypted</span>' +
+                    '</div>' +
+                    '<div class="flex items-center space-x-1">' +
+                        '<span>⛓️</span>' +
+                        '<span>On Blockchain</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="prose max-w-none">' +
+                    '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">' +
+                        '<p class="text-sm text-yellow-800">' +
+                            '<strong>Note:</strong> This entry is encrypted and stored on IPFS. ' +
+                            'To view the actual content, you would need to retrieve and decrypt it from IPFS using your private key.' +
+                        '</p>' +
+                    '</div>' +
+                    '<p class="whitespace-pre-wrap text-gray-700 leading-relaxed">' + state.selectedEntry.content + '</p>' +
+                '</div>' +
+                '<div class="mt-6 pt-4 border-t border-gray-200">' +
+                    '<div class="text-xs text-gray-500 space-y-1">' +
+                        '<div><strong>IPFS Hash:</strong> ' + state.selectedEntry.ipfsHash + '</div>' +
+                        '<div><strong>Transaction:</strong> ' + state.selectedEntry.txHash + '</div>' +
+                        '<div><strong>Entry Size:</strong> ' + (state.selectedEntry.ipfsSize || 'Unknown') + ' bytes</div>' +
                     '</div>' +
                 '</div>';
 
+            modalContent.appendChild(modalInner);
+            modal.appendChild(modalContent);
             document.body.appendChild(modal);
         }
 
-        // Close entry modal
         function closeEntryModal() {
             const modal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
             if (modal) {
@@ -556,82 +498,222 @@
             }
         }
 
-        // Render functions
         function renderWelcomeScreen() {
-            document.getElementById('app').innerHTML = 
-                '<div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">' +
-                    '<div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">' +
-                        '<div class="mb-6">' +
-                            '<h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>' +
-                        '</div>' +
-                        '<button id="connectButton" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg">' +
-                            'Connect MetaMask to Polygon' +
-                        '</button>' +
-                        '<div id="status" class="mt-4 text-sm text-gray-600"></div>' +
-                    '</div>' +
-                '</div>';
+            const app = document.getElementById('app');
+            app.innerHTML = '';
             
-            document.getElementById('connectButton').addEventListener('click', connectWallet);
+            const container = document.createElement('div');
+            container.className = 'min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4';
+            
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center';
+            
+            const header = document.createElement('div');
+            header.className = 'mb-6';
+            
+            const title = document.createElement('h1');
+            title.className = 'text-3xl font-bold text-gray-900 mb-6';
+            title.textContent = 'Life Examined';
+            
+            const button = document.createElement('button');
+            button.id = 'connectButton';
+            button.className = 'w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg';
+            button.textContent = 'Connect MetaMask to Polygon';
+            button.addEventListener('click', connectWallet);
+            
+            const status = document.createElement('div');
+            status.id = 'status';
+            status.className = 'mt-4 text-sm text-gray-600';
+            
+            header.appendChild(title);
+            card.appendChild(header);
+            card.appendChild(button);
+            card.appendChild(status);
+            container.appendChild(card);
+            app.appendChild(container);
         }
 
         function renderMainApp() {
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+
+            const mainContainer = document.createElement('div');
+            mainContainer.className = 'min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100';
+
+            // Header
+            const header = document.createElement('header');
+            header.className = 'bg-white shadow-sm border-b';
+            
+            const headerContent = document.createElement('div');
+            headerContent.className = 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8';
+            
+            const headerInner = document.createElement('div');
+            headerInner.className = 'flex justify-between items-center py-4';
+            
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'flex items-center space-x-3';
+            
+            const headerTitle = document.createElement('h1');
+            headerTitle.className = 'text-2xl font-bold text-gray-900';
+            headerTitle.textContent = 'Life Examined';
+            
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'flex items-center space-x-4';
+            
+            const walletInfo = document.createElement('div');
+            walletInfo.className = 'text-sm text-gray-600';
+            walletInfo.textContent = 'Connected: ' + state.walletAddress.slice(0, 6) + '...' + state.walletAddress.slice(-4);
+            
+            const connectionStatus = document.createElement('div');
+            connectionStatus.className = 'flex items-center space-x-1 text-green-600 text-sm';
+            connectionStatus.innerHTML = '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span>Polygon Connected</span>';
+            
+            titleDiv.appendChild(headerTitle);
+            statusDiv.appendChild(walletInfo);
+            statusDiv.appendChild(connectionStatus);
+            headerInner.appendChild(titleDiv);
+            headerInner.appendChild(statusDiv);
+            headerContent.appendChild(headerInner);
+            header.appendChild(headerContent);
+
+            // Main content
+            const mainContent = document.createElement('div');
+            mainContent.className = 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8';
+            
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-1 lg:grid-cols-3 gap-8';
+
+            // New entry section
+            const newEntrySection = document.createElement('div');
+            newEntrySection.className = 'lg:col-span-2';
+            
+            const newEntryCard = document.createElement('div');
+            newEntryCard.className = 'bg-white rounded-2xl shadow-lg p-6';
+            
+            const newEntryHeader = document.createElement('div');
+            newEntryHeader.className = 'flex items-center justify-between mb-6';
+            newEntryHeader.innerHTML = '<h2 class="text-xl font-semibold text-gray-900">New Entry</h2><div class="flex items-center space-x-2 text-sm text-gray-500"><span>🔒 Encrypted before blockchain</span></div>';
+            
+            const formDiv = document.createElement('div');
+            formDiv.className = 'space-y-4';
+            
+            const titleInput = document.createElement('input');
+            titleInput.type = 'text';
+            titleInput.id = 'titleInput';
+            titleInput.placeholder = 'Entry title...';
+            titleInput.value = state.currentTitle;
+            titleInput.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+            titleInput.addEventListener('input', (e) => {
+                state.currentTitle = e.target.value;
+                updateSaveButton();
+            });
+            
+            const contentInput = document.createElement('textarea');
+            contentInput.id = 'contentInput';
+            contentInput.placeholder = 'Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain.';
+            contentInput.rows = 12;
+            contentInput.value = state.currentEntry;
+            contentInput.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none';
+            contentInput.addEventListener('input', (e) => {
+                state.currentEntry = e.target.value;
+                updateSaveButton();
+            });
+            
+            const saveButton = document.createElement('button');
+            saveButton.id = 'saveButton';
+            saveButton.className = 'flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors';
+            const buttonText = state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain';
+            saveButton.innerHTML = '<span>➕</span><span>' + buttonText + '</span>';
+            saveButton.addEventListener('click', saveEntry);
+            
+            formDiv.appendChild(titleInput);
+            formDiv.appendChild(contentInput);
+            formDiv.appendChild(saveButton);
+            newEntryCard.appendChild(newEntryHeader);
+            newEntryCard.appendChild(formDiv);
+            newEntrySection.appendChild(newEntryCard);
+
+            // Entries section
+            const entriesSection = document.createElement('div');
+            entriesSection.className = 'lg:col-span-1';
+            
+            const entriesCard = document.createElement('div');
+            entriesCard.className = 'bg-white rounded-2xl shadow-lg p-6';
+            
+            const entriesHeader = document.createElement('div');
+            entriesHeader.className = 'flex items-center justify-between mb-4';
+            entriesHeader.innerHTML = '<h2 class="text-xl font-semibold text-gray-900">Your Entries</h2><span>📖</span>';
+            
+            const searchDiv = document.createElement('div');
+            searchDiv.className = 'relative mb-4';
+            
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.id = 'searchInput';
+            searchInput.placeholder = 'Search entries...';
+            searchInput.value = state.searchTerm;
+            searchInput.className = 'w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+            searchInput.addEventListener('input', (e) => {
+                state.searchTerm = e.target.value;
+                updateEntriesDisplay();
+            });
+            
+            const entriesContainer = document.createElement('div');
+            entriesContainer.className = 'space-y-3 max-h-96 overflow-y-auto';
+            entriesContainer.id = 'entriesContainer';
+            
+            searchDiv.appendChild(searchInput);
+            entriesCard.appendChild(entriesHeader);
+            entriesCard.appendChild(searchDiv);
+            entriesCard.appendChild(entriesContainer);
+            entriesSection.appendChild(entriesCard);
+
+            grid.appendChild(newEntrySection);
+            grid.appendChild(entriesSection);
+            mainContent.appendChild(grid);
+            mainContainer.appendChild(header);
+            mainContainer.appendChild(mainContent);
+            app.appendChild(mainContainer);
+
+            updateEntriesDisplay();
+            updateSaveButton();
+        }
+
+        function updateEntriesDisplay() {
+            const entriesContainer = document.getElementById('entriesContainer');
+            if (!entriesContainer) return;
+
             const filteredEntries = state.entries.filter(entry => 
                 entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
                 entry.content.toLowerCase().includes(state.searchTerm.toLowerCase())
             );
 
-            document.getElementById('app').innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                    <header class="bg-white shadow-sm border-b">
-                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div class="flex justify-between items-center py-4">
-                                <div class="flex items-center space-x-3">
-                                    <h1 class="text-2xl font-bold text-gray-900">Life Examined</h1>
-                                </div>
-                                <div class="flex items-center space-x-4">
-                                    <div class="text-sm text-gray-600">
-                                        Connected: ${state.walletAddress.slice(0, 6)}...${state.walletAddress.slice(-4)}
-                                    </div>
-                                    <div class="flex items-center space-x-1 text-green-600 text-sm">
-                                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        <span>Polygon Connected</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Re-attach event listeners
-            const titleInput = document.getElementById('titleInput');
-            const contentInput = document.getElementById('contentInput');
-            const saveButton = document.getElementById('saveButton');
-            const searchInput = document.getElementById('searchInput');
-            
-            if (titleInput) {
-                titleInput.addEventListener('input', (e) => {
-                    state.currentTitle = e.target.value;
-                    updateSaveButton();
-                });
-            }
-            
-            if (contentInput) {
-                contentInput.addEventListener('input', (e) => {
-                    state.currentEntry = e.target.value;
-                    updateSaveButton();
-                });
-            }
-            
-            if (saveButton) {
-                saveButton.addEventListener('click', saveEntry);
-                updateSaveButton();
-            }
-            
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    state.searchTerm = e.target.value;
-                    updateEntriesDisplay();
+            entriesContainer.innerHTML = '';
+
+            if (filteredEntries.length === 0) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'text-center py-8 text-gray-500';
+                const message = state.searchTerm ? 'No matching entries found.' : 'No entries yet. Start writing!';
+                emptyDiv.innerHTML = '<span class="text-4xl">📖</span><p>' + message + '</p>';
+                entriesContainer.appendChild(emptyDiv);
+            } else {
+                filteredEntries.forEach(entry => {
+                    const entryDiv = document.createElement('div');
+                    entryDiv.className = 'p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors';
+                    entryDiv.addEventListener('click', () => viewEntry(entry.id));
+                    
+                    entryDiv.innerHTML = 
+                        '<div class="flex items-center justify-between mb-2">' +
+                            '<h3 class="font-medium text-gray-900 truncate">' + entry.title + '</h3>' +
+                            '<span class="text-green-500">🔒</span>' +
+                        '</div>' +
+                        '<p class="text-sm text-gray-600 line-clamp-2">' + entry.content + '</p>' +
+                        '<div class="flex items-center justify-between mt-2 text-xs text-gray-500">' +
+                            '<span>' + new Date(entry.timestamp).toLocaleDateString() + '</span>' +
+                            '<span>IPFS: ' + entry.ipfsHash.slice(0, 8) + '...</span>' +
+                        '</div>';
+                    
+                    entriesContainer.appendChild(entryDiv);
                 });
             }
         }
@@ -649,7 +731,6 @@
             }
         }
 
-        // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Life Examined app initializing...');
             
@@ -657,93 +738,8 @@
                 updateStatus('MetaMask detected! Click to connect.');
             }
             
-            const connectButton = document.getElementById('connectButton');
-            if (connectButton) {
-                connectButton.addEventListener('click', connectWallet);
-            }
+            renderWelcomeScreen();
         });
     </script>
 </body>
-</html></div>
-                        </div>
-                    </header>
-
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            
-                            <div class="lg:col-span-2">
-                                <div class="bg-white rounded-2xl shadow-lg p-6">
-                                    <div class="flex items-center justify-between mb-6">
-                                        <h2 class="text-xl font-semibold text-gray-900">New Entry</h2>
-                                        <div class="flex items-center space-x-2 text-sm text-gray-500">
-                                            <span>🔒 Encrypted before blockchain</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="space-y-4">
-                                        <input
-                                            type="text"
-                                            id="titleInput"
-                                            placeholder="Entry title..."
-                                            value="${state.currentTitle}"
-                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                        
-                                        <textarea
-                                            id="contentInput"
-                                            placeholder="Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain."
-                                            rows="12"
-                                            class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                                        >${state.currentEntry}</textarea>
-                                        
-                                        <button
-                                            id="saveButton"
-                                            class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-                                        >
-                                            <span>➕</span>
-                                            <span id="saveButtonText">
-                                                ${state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain'}
-                                            </span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="lg:col-span-1">
-                                <div class="bg-white rounded-2xl shadow-lg p-6">
-                                    <div class="flex items-center justify-between mb-4">
-                                        <h2 class="text-xl font-semibold text-gray-900">Your Entries</h2>
-                                        <span>📖</span>
-                                    </div>
-                                    
-                                    <div class="relative mb-4">
-                                        <input
-                                            type="text"
-                                            id="searchInput"
-                                            placeholder="Search entries..."
-                                            value="${state.searchTerm}"
-                                            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                    </div>
-                                    
-                                    <div class="space-y-3 max-h-96 overflow-y-auto">
-                                        ${filteredEntries.length === 0 ? `
-                                            <div class="text-center py-8 text-gray-500">
-                                                <span class="text-4xl">📖</span>
-                                                <p>No entries yet. Start writing!</p>
-                                            </div>
-                                        ` : filteredEntries.map(entry => `
-                                            <div class="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors" onclick="viewEntry('${entry.id}')">
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <h3 class="font-medium text-gray-900 truncate">${entry.title}</h3>
-                                                    <span class="text-green-500">🔒</span>
-                                                </div>
-                                                <p class="text-sm text-gray-600 line-clamp-2">${entry.content}</p>
-                                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
-                                                    <span>${new Date(entry.timestamp).toLocaleDateString()}</span>
-                                                    <span>IPFS: ${entry.ipfsHash.slice(0, 8)}...</span>
-                                                </div>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
+</html>
