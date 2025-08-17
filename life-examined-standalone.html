@@ -1,1439 +1,692 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Life Examined - Blockchain Journal</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.8.0/web3.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .line-clamp-2 {
-            overflow: hidden;
-            display: -webkit-box;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
-        }
-        .tag-input {
-            min-height: 40px;
-            padding: 8px;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            align-items: center;
-        }
-        .tag-chip {
-            background: #3b82f6;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .tag-chip button {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            padding: 0;
-            margin-left: 4px;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Life Examined — Hybrid (Worker + MetaMask + Encrypted)</title>
+  <meta name="color-scheme" content="light dark">
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Web3 (for optional Polygon on-chain logging) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"
+          integrity="sha512-iQfH2QkF5f2Z0cH2v5eQzYk0sXwT6n1hUuQK3oO0PcsZ8dXv5U2x4cV4X8bq1G1vQ2z4rT9Q6O3o5l2K5qkQ/A=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { --ring: #6366f1; }
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .wrap-anywhere{overflow-wrap:anywhere}
+    .chip{display:inline-flex;align-items:center;gap:.4rem;padding:.2rem .6rem;border-radius:9999px;background:rgba(99,102,241,.12);font-size:.75rem}
+    .chip button{all:unset;cursor:pointer;font-weight:700;opacity:.7}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+         border:1px solid rgba(128,128,128,.35);border-bottom-width:2px;border-radius:.375rem;padding:.1rem .35rem;font-size:.75rem}
+    .ring:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    .btn{padding:.625rem .9rem;border-radius:.6rem}
+    .btn-primary{background:#111827;color:#fff}
+    .btn-primary:hover{background:#0b1220}
+    .btn-indigo{background:#4f46e5;color:#fff}
+    .btn-indigo:hover{background:#4338ca}
+    .btn-ghost{background:rgba(0,0,0,.06)}
+    .btn-ghost:hover{background:rgba(0,0,0,.12)}
+    .badge{font-size:.7rem;padding:.2rem .5rem;border-radius:.5rem}
+    .badge-green{background:rgba(16,185,129,.15);color:#059669}
+    .badge-red{background:rgba(239,68,68,.15);color:#dc2626}
+    .badge-amber{background:rgba(245,158,11,.15);color:#d97706}
+    .card{border:1px solid rgba(120,120,120,.18);border-radius:1rem;background:#fff}
+    .toast{position:fixed;right:1rem;bottom:1rem;padding:.6rem .8rem;border-radius:.6rem;color:#fff;z-index:1000;opacity:.98}
+    .toast-info{background:#3b82f6}.toast-err{background:#ef4444}.toast-ok{background:#10b981}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:1rem;z-index:50}
+    @media (prefers-color-scheme: dark){
+      body{background:#0b0b0f;color:#e5e7eb}
+      .card{background:#0f1115;border-color:#222}
+      .btn-ghost{background:rgba(255,255,255,.08)}
+      .btn-ghost:hover{background:rgba(255,255,255,.12)}
+    }
+  </style>
 </head>
-<body>
-    <div id="app">
-        <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Life Examined</h1>
-                </div>
-                
-                <button
-                    id="connectButton"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg"
-                >
-                    Connect MetaMask to Polygon
-                </button>
-                
-                <div id="status" class="mt-4 text-sm text-gray-600"></div>
-            </div>
+<body class="min-h-screen">
+  <div class="max-w-7xl mx-auto p-4 sm:p-6">
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">Life Examined — Hybrid</h1>
+        <p class="text-sm text-zinc-500">End-to-end encrypted journal with optional Polygon logging & IPFS via Worker.</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
+          <span id="workerDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
+          <span id="workerText">Checking worker…</span>
+        </span>
+        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
+          <span id="chainDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
+          <span id="chainText">Wallet: not connected</span>
+        </span>
+        <button id="connectBtn" class="btn btn-ghost text-sm">Connect MetaMask</button>
+        <button id="lockBtn" class="btn btn-primary text-sm">Lock</button>
+      </div>
+    </header>
+
+    <!-- Passphrase -->
+    <section class="mt-4">
+      <div class="card p-4">
+        <label for="passphrase" class="block text-sm font-medium">Passphrase</label>
+        <div class="mt-2 flex gap-2">
+          <input id="passphrase" type="password" class="w-full ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Enter a strong passphrase (don't lose it)" />
+          <button id="unlockBtn" class="btn btn-indigo">Unlock</button>
         </div>
-    </div>
-
-    <script>
-        const CONTRACT_ADDRESS = '0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A';
-        const CONTRACT_ABI = [
-            {
-                "inputs": [
-                    {"internalType": "string", "name": "_ipfsHash", "type": "string"},
-                    {"internalType": "uint256", "name": "_timestamp", "type": "uint256"},
-                    {"internalType": "string", "name": "_title", "type": "string"}
-                ],
-                "name": "storeEntry",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "getMyEntries",
-                "outputs": [
-                    {
-                        "components": [
-                            {"internalType": "string", "name": "ipfsHash", "type": "string"},
-                            {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
-                            {"internalType": "string", "name": "title", "type": "string"},
-                            {"internalType": "address", "name": "author", "type": "address"}
-                        ],
-                        "internalType": "struct LifeExamined.Entry[]",
-                        "name": "",
-                        "type": "tuple[]"
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [],
-                "name": "totalEntries",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-                "stateMutability": "view",
-                "type": "function"
-            }
-        ];
-
-        // Predefined categories with emojis
-        const PREDEFINED_CATEGORIES = [
-            { name: 'Personal', emoji: '👤', color: 'bg-blue-100 text-blue-800' },
-            { name: 'Work', emoji: '💼', color: 'bg-green-100 text-green-800' },
-            { name: 'Relationships', emoji: '❤️', color: 'bg-pink-100 text-pink-800' },
-            { name: 'Goals', emoji: '🎯', color: 'bg-purple-100 text-purple-800' },
-            { name: 'Health', emoji: '🏥', color: 'bg-red-100 text-red-800' },
-            { name: 'Travel', emoji: '✈️', color: 'bg-yellow-100 text-yellow-800' },
-            { name: 'Learning', emoji: '📚', color: 'bg-indigo-100 text-indigo-800' },
-            { name: 'Gratitude', emoji: '🙏', color: 'bg-green-100 text-green-800' },
-            { name: 'Reflection', emoji: '🤔', color: 'bg-gray-100 text-gray-800' },
-            { name: 'Ideas', emoji: '💡', color: 'bg-yellow-100 text-yellow-800' }
-        ];
-
-        let state = {
-            entries: [],
-            currentEntry: '',
-            currentTitle: '',
-            currentCategory: '',
-            currentTags: [],
-            selectedEntry: null,
-            isConnected: false,
-            walletAddress: '',
-            searchTerm: '',
-            selectedCategoryFilter: '',
-            selectedTagFilter: '',
-            isUploading: false,
-            web3: null,
-            contract: null,
-            encryptionCache: new Map(),
-            allTags: new Set(),
-            tagInput: ''
-        };
-
-        function updateStatus(message) {
-            const statusDiv = document.getElementById('status');
-            if (statusDiv) {
-                statusDiv.textContent = message;
-                console.log(message);
-            }
-        }
-
-        function checkMetaMask() {
-            if (typeof window.ethereum === 'undefined') {
-                updateStatus('MetaMask not detected. Please install MetaMask.');
-                return false;
-            }
-            updateStatus('MetaMask detected!');
-            return true;
-        }
-
-        function addTag(tag) {
-            if (tag && !state.currentTags.includes(tag)) {
-                state.currentTags.push(tag);
-                state.allTags.add(tag);
-                updateTagsDisplay();
-                updateSaveButton();
-            }
-        }
-
-        function removeTag(tag) {
-            state.currentTags = state.currentTags.filter(t => t !== tag);
-            updateTagsDisplay();
-            updateSaveButton();
-        }
-
-        function updateTagsDisplay() {
-            const tagContainer = document.getElementById('tagContainer');
-            if (!tagContainer) return;
-
-            tagContainer.innerHTML = '';
-            
-            state.currentTags.forEach(tag => {
-                const tagChip = document.createElement('span');
-                tagChip.className = 'tag-chip';
-                tagChip.innerHTML = `${tag} <button onclick="removeTag('${tag}')">×</button>`;
-                tagContainer.appendChild(tagChip);
-            });
-
-            // Add input for new tags
-            const tagInputElement = document.createElement('input');
-            tagInputElement.id = 'tagInputField';
-            tagInputElement.type = 'text';
-            tagInputElement.placeholder = state.currentTags.length === 0 ? 'Add tags...' : '';
-            tagInputElement.className = 'border-none outline-none flex-1 min-w-[100px]';
-            tagInputElement.value = state.tagInput;
-            
-            tagInputElement.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const tag = e.target.value.trim();
-                    if (tag) {
-                        addTag(tag);
-                        e.target.value = '';
-                        state.tagInput = '';
-                    }
-                }
-            });
-            
-            tagInputElement.addEventListener('input', (e) => {
-                state.tagInput = e.target.value;
-            });
-            
-            tagContainer.appendChild(tagInputElement);
-        }
-
-        async function uploadToIPFS(encryptedData) {
-            try {
-                const ipfsData = {
-                    encryptedTitle: encryptedData.encryptedTitle,
-                    encryptedContent: encryptedData.encryptedContent,
-                    encryptedCategory: encryptedData.encryptedCategory,
-                    encryptedTags: encryptedData.encryptedTags,
-                    timestamp: new Date().toISOString(),
-                    signature: encryptedData.signature,
-                    message: encryptedData.message,
-                    author: state.walletAddress,
-                    version: "2.0"
-                };
-
-                console.log('Uploading to IPFS...');
-                const mockHash = 'Qm' + Array.from({length: 44}, () => 
-                    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
-                        Math.floor(Math.random() * 62)
-                    ]
-                ).join('');
-                
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                return {
-                    IpfsHash: mockHash,
-                    PinSize: JSON.stringify(ipfsData).length,
-                    Timestamp: new Date().toISOString()
-                };
-
-            } catch (error) {
-                console.error('IPFS upload failed:', error);
-                throw error;
-            }
-        }
-
-        async function encryptEntry(content, title, category, tags) {
-            try {
-                let signature;
-                let message = 'Encrypt journal entry: ' + Date.now();
-                
-                if (typeof window.ethereum !== 'undefined' && state.isConnected) {
-                    try {
-                        signature = await window.ethereum.request({
-                            method: 'personal_sign',
-                            params: [message, state.walletAddress],
-                        });
-                        console.log('✅ Got real signature for encryption');
-                    } catch (signError) {
-                        console.log('Signature failed, using fallback:', signError);
-                        signature = '0x' + Array.from({length: 130}, () => 
-                            Math.floor(Math.random() * 16).toString(16)
-                        ).join('');
-                    }
-                } else {
-                    signature = '0x' + Array.from({length: 130}, () => 
-                        Math.floor(Math.random() * 16).toString(16)
-                    ).join('');
-                }
-                
-                const keyData = signature.slice(2, 66);
-                
-                const encryptText = (text, key) => {
-                    let result = '';
-                    for (let i = 0; i < text.length; i++) {
-                        result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-                    }
-                    return btoa(result);
-                };
-                
-                const encryptedTitle = encryptText(title, keyData);
-                const encryptedContent = encryptText(content, keyData);
-                const encryptedCategory = encryptText(category, keyData);
-                const encryptedTags = encryptText(JSON.stringify(tags), keyData);
-                
-                const entryKey = title + '_' + Date.now();
-                state.encryptionCache.set(entryKey, { signature, message });
-                
-                return {
-                    encryptedTitle,
-                    encryptedContent,
-                    encryptedCategory,
-                    encryptedTags,
-                    signature,
-                    message,
-                    entryKey
-                };
-            } catch (error) {
-                console.error('Encryption failed:', error);
-                throw error;
-            }
-        }
-
-        function decryptEntry(encryptedData, providedSignature = null) {
-            try {
-                const signature = providedSignature || encryptedData.signature;
-                if (!signature) {
-                    throw new Error('No signature available for decryption');
-                }
-                
-                const keyData = signature.slice(2, 66);
-                
-                const decryptText = (encryptedText, key) => {
-                    try {
-                        const decoded = atob(encryptedText);
-                        let result = '';
-                        for (let i = 0; i < decoded.length; i++) {
-                            result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-                        }
-                        return result;
-                    } catch (error) {
-                        console.error('Decryption error:', error);
-                        return '[Decryption Error]';
-                    }
-                };
-                
-                const decryptedTitle = decryptText(encryptedData.encryptedTitle, keyData);
-                const decryptedContent = decryptText(encryptedData.encryptedContent, keyData);
-                
-                // Handle backward compatibility - older entries may not have category/tags
-                let decryptedCategory = '';
-                let decryptedTags = [];
-                
-                try {
-                    if (encryptedData.encryptedCategory) {
-                        decryptedCategory = decryptText(encryptedData.encryptedCategory, keyData);
-                    }
-                } catch (error) {
-                    console.log('No category data (older entry)');
-                    decryptedCategory = '';
-                }
-                
-                try {
-                    if (encryptedData.encryptedTags) {
-                        const tagsString = decryptText(encryptedData.encryptedTags, keyData);
-                        decryptedTags = JSON.parse(tagsString || '[]');
-                    }
-                } catch (error) {
-                    console.log('No tags data (older entry)');
-                    decryptedTags = [];
-                }
-                
-                return {
-                    title: decryptedTitle,
-                    content: decryptedContent,
-                    category: decryptedCategory,
-                    tags: decryptedTags,
-                    success: true
-                };
-            } catch (error) {
-                console.error('Decryption failed:', error);
-                return { 
-                    title: '[Decryption Error]', 
-                    content: '[Unable to decrypt entry - may need to re-sign with your wallet]',
-                    category: '',
-                    tags: [],
-                    success: false
-                };
-            }
-        }
-
-        async function retrieveAndDecryptFromIPFS(ipfsHash, originalTitle) {
-            try {
-                console.log('Retrieving content from IPFS for hash:', ipfsHash);
-                
-                const ipfsUrl = 'https://gateway.pinata.cloud/ipfs/' + ipfsHash;
-                
-                try {
-                    const response = await fetch(ipfsUrl);
-                    if (response.ok) {
-                        const ipfsData = await response.json();
-                        console.log('Retrieved data from IPFS:', ipfsData);
-                        
-                        let decrypted = decryptEntry(ipfsData);
-                        
-                        if (!decrypted.success) {
-                            console.log('Decryption failed, may need fresh signature');
-                            return {
-                                title: originalTitle,
-                                content: 'This entry is encrypted. Click "Decrypt Entry" below to decrypt it with your wallet signature.',
-                                category: '',
-                                tags: [],
-                                isDecrypted: false,
-                                canRetryDecryption: true,
-                                ipfsData: ipfsData
-                            };
-                        }
-                        
-                        // Add tags to global set
-                        if (decrypted.tags && Array.isArray(decrypted.tags)) {
-                            decrypted.tags.forEach(tag => state.allTags.add(tag));
-                        }
-                        
-                        return {
-                            title: decrypted.title || originalTitle,
-                            content: decrypted.content,
-                            category: decrypted.category || '',
-                            tags: Array.isArray(decrypted.tags) ? decrypted.tags : [],
-                            isDecrypted: true,
-                            ipfsData: ipfsData
-                        };
-                    }
-                } catch (ipfsError) {
-                    console.log('IPFS retrieval failed (expected for demo):', ipfsError);
-                }
-                
-                // Fallback for demo - provide default values for older entries
-                return {
-                    title: originalTitle,
-                    content: 'This entry would show your decrypted journal content here.\n\nThe actual content is encrypted and stored on IPFS at: ' + ipfsHash + '\n\nIn a production version, this would retrieve and decrypt your actual journal text using your private key.',
-                    category: 'Personal', // Default category for older entries
-                    tags: ['legacy'], // Default tag for older entries
-                    isDecrypted: false,
-                    note: 'Demo mode - actual IPFS retrieval would happen in production'
-                };
-                
-            } catch (error) {
-                console.error('Error retrieving from IPFS:', error);
-                return {
-                    title: originalTitle,
-                    content: 'Error retrieving content from IPFS: ' + error.message,
-                    category: '',
-                    tags: [],
-                    isDecrypted: false
-                };
-            }
-        }
-
-        async function decryptEntryWithFreshSignature(entry) {
-            try {
-                if (!state.isConnected || !entry.ipfsData) {
-                    throw new Error('Wallet not connected or no IPFS data available');
-                }
-
-                const message = 'Decrypt journal entry: ' + Date.now();
-                const signature = await window.ethereum.request({
-                    method: 'personal_sign',
-                    params: [message, state.walletAddress],
-                });
-
-                console.log('Got fresh signature for decryption');
-
-                const decrypted = decryptEntry(entry.ipfsData, signature);
-                
-                if (decrypted.success) {
-                    // Add tags to global set (with safety check)
-                    if (decrypted.tags && Array.isArray(decrypted.tags)) {
-                        decrypted.tags.forEach(tag => state.allTags.add(tag));
-                    }
-                    
-                    const entryIndex = state.entries.findIndex(e => e.id === entry.id);
-                    if (entryIndex !== -1) {
-                        state.entries[entryIndex] = {
-                            ...state.entries[entryIndex],
-                            title: decrypted.title,
-                            content: decrypted.content,
-                            category: decrypted.category || '',
-                            tags: Array.isArray(decrypted.tags) ? decrypted.tags : [],
-                            isDecrypted: true
-                        };
-                        
-                        if (state.selectedEntry && state.selectedEntry.id === entry.id) {
-                            state.selectedEntry = state.entries[entryIndex];
-                        }
-                    }
-                    
-                    updateEntriesDisplay();
-                    updateFilters();
-                    if (state.selectedEntry) {
-                        showEntryModal();
-                    }
-                    
-                    return {
-                        success: true,
-                        title: decrypted.title,
-                        content: decrypted.content,
-                        category: decrypted.category || '',
-                        tags: Array.isArray(decrypted.tags) ? decrypted.tags : []
-                    };
-                } else {
-                    throw new Error('Decryption failed even with fresh signature');
-                }
-
-            } catch (error) {
-                console.error('Fresh decryption failed:', error);
-                if (error.code === 4001) {
-                    alert('Decryption cancelled by user');
-                } else {
-                    alert('Failed to decrypt entry: ' + error.message);
-                }
-                return { success: false };
-            }
-        }
-
-        async function storeOnBlockchain(ipfsHash, title, timestamp) {
-            try {
-                if (!state.contract || !state.isConnected) {
-                    throw new Error('Wallet not connected or contract not initialized');
-                }
-
-                console.log('Preparing blockchain transaction...');
-
-                try {
-                    const totalEntries = await state.contract.methods.totalEntries().call();
-                    console.log('Contract is accessible. Current total entries:', totalEntries);
-                } catch (readError) {
-                    console.error('Contract read test failed:', readError);
-                    throw new Error('Cannot communicate with smart contract');
-                }
-
-                let gasEstimate;
-                try {
-                    gasEstimate = await state.contract.methods.storeEntry(
-                        ipfsHash,
-                        timestamp,
-                        title
-                    ).estimateGas({ from: state.walletAddress });
-                    
-                    console.log('Gas estimate:', gasEstimate);
-                } catch (estimateError) {
-                    console.error('Gas estimation failed:', estimateError);
-                    gasEstimate = 300000;
-                    console.log('Using default gas limit:', gasEstimate);
-                }
-
-                const gasPrice = await state.web3.eth.getGasPrice();
-                const gasLimit = Math.floor(gasEstimate * 1.2);
-
-                console.log('Sending blockchain transaction...');
-                const tx = await state.contract.methods.storeEntry(
-                    ipfsHash,
-                    timestamp,
-                    title
-                ).send({
-                    from: state.walletAddress,
-                    gas: gasLimit,
-                    gasPrice: gasPrice
-                });
-                
-                console.log('✅ Real blockchain transaction successful!');
-                console.log('Transaction Hash:', tx.transactionHash);
-                
-                return tx.transactionHash;
-                
-            } catch (error) {
-                console.error('Blockchain transaction failed:', error);
-                
-                if (error.message.includes('revert')) {
-                    throw new Error('Smart contract rejected the transaction. Please check your parameters.');
-                } else if (error.message.includes('insufficient funds')) {
-                    throw new Error('Insufficient POL for gas fees. Please add more POL to your wallet.');
-                } else if (error.code === 4001) {
-                    throw new Error('Transaction was cancelled by user.');
-                } else {
-                    throw new Error('Transaction failed: ' + error.message);
-                }
-            }
-        }
-
-        async function connectWallet() {
-            updateStatus('Checking MetaMask...');
-            
-            if (!checkMetaMask()) {
-                return;
-            }
-
-            try {
-                updateStatus('Requesting account access...');
-                const accounts = await window.ethereum.request({ 
-                    method: 'eth_requestAccounts' 
-                });
-                
-                if (accounts.length > 0) {
-                    updateStatus('Checking network...');
-                    
-                    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-                    
-                    if (chainId !== '0x89') {
-                        updateStatus('Switching to Polygon network...');
-                        try {
-                            await window.ethereum.request({
-                                method: 'wallet_switchEthereumChain',
-                                params: [{ chainId: '0x89' }],
-                            });
-                        } catch (switchError) {
-                            if (switchError.code === 4902) {
-                                updateStatus('Adding Polygon network...');
-                                await window.ethereum.request({
-                                    method: 'wallet_addEthereumChain',
-                                    params: [{
-                                        chainId: '0x89',
-                                        chainName: 'Polygon Mainnet',
-                                        nativeCurrency: {
-                                            name: 'POL',
-                                            symbol: 'POL',
-                                            decimals: 18,
-                                        },
-                                        rpcUrls: ['https://polygon-rpc.com/'],
-                                        blockExplorerUrls: ['https://polygonscan.com/'],
-                                    }],
-                                });
-                            }
-                        }
-                    }
-                    
-                    updateStatus('Initializing Web3...');
-                    state.web3 = new Web3(window.ethereum);
-                    state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-                    state.walletAddress = accounts[0];
-                    state.isConnected = true;
-                    
-                    updateStatus('Testing contract connection...');
-                    try {
-                        const totalEntries = await state.contract.methods.totalEntries().call();
-                        console.log('Contract connection successful. Total entries:', totalEntries);
-                        updateStatus('Connected successfully!');
-                    } catch (contractError) {
-                        console.error('Contract connection test failed:', contractError);
-                        updateStatus('Warning: Contract may not be accessible');
-                    }
-                    
-                    console.log('✅ Connected to Polygon with real MetaMask!');
-                    
-                    await loadEntries();
-                    renderMainApp();
-                    
-                    window.ethereum.on('accountsChanged', (accounts) => {
-                        if (accounts.length === 0) {
-                            state.isConnected = false;
-                            state.walletAddress = '';
-                            renderWelcomeScreen();
-                        } else {
-                            state.walletAddress = accounts[0];
-                            loadEntries();
-                            renderMainApp();
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Error connecting to MetaMask:', error);
-                updateStatus('Connection failed: ' + error.message);
-            }
-        }
-
-        async function loadEntries() {
-            try {
-                if (state.contract && state.isConnected) {
-                    console.log('Loading entries from blockchain...');
-                    
-                    try {
-                        const blockchainEntries = await state.contract.methods.getMyEntries().call({
-                            from: state.walletAddress
-                        });
-                        
-                        console.log('Raw blockchain entries:', blockchainEntries);
-                        
-                        // Debug: Let's see the structure of the first entry
-                        if (blockchainEntries.length > 0) {
-                            console.log('First entry structure:', blockchainEntries[0]);
-                            console.log('First entry keys:', Object.keys(blockchainEntries[0]));
-                        }
-                        
-                        if (blockchainEntries && blockchainEntries.length > 0) {
-                            const processedEntries = await Promise.all(
-                                blockchainEntries.map(async (entry, index) => {
-                                    console.log('Processing entry:', index, 'with timestamp:', entry.timestamp);
-                                    console.log('Full entry object:', entry);
-                                    
-                                    let displayTitle = entry.title || ('Entry ' + new Date().toLocaleDateString());
-                                    let displayContent = 'Encrypted entry stored on IPFS: ' + entry.ipfsHash;
-                                    let displayCategory = '';
-                                    let displayTags = [];
-                                    let isDecrypted = false;
-                                    let ipfsData = null;
-                                    let canRetryDecryption = false;
-                                    
-                                    // Safe timestamp conversion BEFORE any other processing
-                                    let entryTimestamp;
-                                    let timestampMs;
-                                    try {
-                                        // Try different possible timestamp field names
-                                        let rawTimestamp = entry.timestamp || entry._timestamp || entry[1]; // index 1 might be timestamp
-                                        console.log('Raw timestamp value:', rawTimestamp, 'type:', typeof rawTimestamp);
-                                        
-                                        timestampMs = Number(rawTimestamp);
-                                        
-                                        if (isNaN(timestampMs) || timestampMs === 0) {
-                                            throw new Error('Invalid timestamp: ' + rawTimestamp);
-                                        }
-                                        
-                                        if (timestampMs < 1000000000000) { // If timestamp is in seconds
-                                            timestampMs = timestampMs * 1000;
-                                        }
-                                        
-                                        const testDate = new Date(timestampMs);
-                                        if (isNaN(testDate.getTime())) {
-                                            throw new Error('Invalid date from timestamp: ' + rawTimestamp);
-                                        }
-                                        
-                                        entryTimestamp = testDate.toISOString();
-                                        displayTitle = entry.title || entry[2] || ('Entry ' + testDate.toLocaleDateString());
-                                    } catch (timestampError) {
-                                        console.warn('Invalid timestamp detected for entry', index, ':', entry.timestamp, timestampError);
-                                        // Use current time as fallback with slight offset for each entry
-                                        const fallbackDate = new Date(Date.now() - (index * 60000)); // 1 minute apart
-                                        entryTimestamp = fallbackDate.toISOString();
-                                        timestampMs = fallbackDate.getTime();
-                                        displayTitle = entry.title || entry[2] || ('Entry ' + fallbackDate.toLocaleDateString());
-                                    }
-                                    
-                                    try {
-                                        const decryptedData = await retrieveAndDecryptFromIPFS(entry.ipfsHash, displayTitle);
-                                        displayTitle = decryptedData.title;
-                                        displayContent = decryptedData.content;
-                                        displayCategory = decryptedData.category;
-                                        displayTags = decryptedData.tags;
-                                        isDecrypted = decryptedData.isDecrypted;
-                                        ipfsData = decryptedData.ipfsData;
-                                        canRetryDecryption = decryptedData.canRetryDecryption;
-                                    } catch (decryptError) {
-                                        console.log('Could not decrypt entry:', decryptError);
-                                    }
-
-                                    return {
-                                        id: timestampMs + index, // Use safe timestamp for unique ID
-                                        title: displayTitle,
-                                        content: displayContent,
-                                        category: displayCategory,
-                                        tags: displayTags,
-                                        timestamp: entryTimestamp,
-                                        encrypted: true,
-                                        onChain: true,
-                                        ipfsHash: entry.ipfsHash,
-                                        txHash: 'On blockchain',
-                                        originalEntry: entry,
-                                        isDecrypted: isDecrypted,
-                                        ipfsData: ipfsData,
-                                        canRetryDecryption: canRetryDecryption
-                                    };
-                                })
-                            );
-                            
-                            state.entries = processedEntries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                            console.log('✅ Loaded and processed ' + state.entries.length + ' entries from blockchain');
-                            
-                            if (state.entries.length === 0) {
-                                console.log('⚠️ Contract returned entries but processing resulted in empty list');
-                            }
-                        } else {
-                            console.log('No entries found on blockchain for this wallet');
-                            state.entries = [];
-                        }
-                    } catch (blockchainError) {
-                        console.error('Failed to load from blockchain:', blockchainError);
-                        
-                        if (blockchainError.message.includes('revert')) {
-                            console.log('Contract call reverted - might be no entries or contract issue');
-                        } else if (blockchainError.message.includes('network')) {
-                            console.log('Network error - blockchain might be slow');
-                        }
-                        
-                        state.entries = [];
-                    }
-                } else {
-                    console.log('Contract not ready - will load entries after connection');
-                    state.entries = [];
-                }
-            } catch (error) {
-                console.error('Error loading entries:', error);
-                state.entries = [];
-            }
-        }
-
-        async function saveEntry() {
-            if (!state.currentTitle.trim() || !state.currentEntry.trim()) {
-                alert('Please enter both a title and content for your journal entry.');
-                return;
-            }
-            
-            state.isUploading = true;
-            renderMainApp();
-            
-            try {
-                console.log('Step 1: Encrypting entry...');
-                const encryptedData = await encryptEntry(
-                    state.currentEntry, 
-                    state.currentTitle, 
-                    state.currentCategory,
-                    state.currentTags
-                );
-                
-                console.log('Step 2: Uploading to IPFS...');
-                const ipfsResult = await uploadToIPFS(encryptedData);
-                
-                console.log('Step 3: Storing on blockchain...');
-                const txHash = await storeOnBlockchain(
-                    ipfsResult.IpfsHash, 
-                    state.currentTitle, 
-                    Math.floor(Date.now() / 1000)
-                );
-                
-                console.log('Step 4: Creating entry record...');
-                
-                // Add tags to global set
-                state.currentTags.forEach(tag => state.allTags.add(tag));
-                
-                const newEntry = {
-                    id: Date.now(),
-                    title: state.currentTitle,
-                    content: state.currentEntry,
-                    category: state.currentCategory,
-                    tags: [...state.currentTags],
-                    timestamp: new Date().toISOString(),
-                    encrypted: true,
-                    onChain: true,
-                    ipfsHash: ipfsResult.IpfsHash,
-                    ipfsSize: ipfsResult.PinSize,
-                    txHash: txHash,
-                    isDecrypted: true
-                };
-                
-                // Add to entries immediately (optimistic update)
-                state.entries.unshift(newEntry);
-                
-                // Clear form
-                state.currentEntry = '';
-                state.currentTitle = '';
-                state.currentCategory = '';
-                state.currentTags = [];
-                state.tagInput = '';
-                
-                console.log('✅ Entry complete! Encrypted → IPFS → Blockchain');
-                console.log('🎉 Your journal entry is now completely decentralized!');
-                console.log('Transaction Hash:', txHash);
-                
-                alert('🎉 Journal entry successfully saved to blockchain!\n\nTransaction: ' + txHash);
-                
-                // Wait a moment for blockchain confirmation, then reload entries
-                setTimeout(async () => {
-                    console.log('Reloading entries from blockchain to confirm...');
-                    await loadEntries();
-                    updateEntriesDisplay();
-                    updateFilters();
-                }, 5000); // Wait 5 seconds for blockchain confirmation
-                
-            } catch (error) {
-                console.error('Failed to save entry:', error);
-                alert('Failed to save entry: ' + error.message);
-                
-                // Remove the optimistic entry if save failed
-                state.entries = state.entries.filter(entry => entry.id !== Date.now());
-            } finally {
-                state.isUploading = false;
-                renderMainApp();
-                updateFilters();
-            }
-        }
-
-        function viewEntry(entryId) {
-            const entry = state.entries.find(e => e.id == entryId);
-            if (entry) {
-                state.selectedEntry = entry;
-                showEntryModal();
-            }
-        }
-
-        function getCategoryInfo(categoryName) {
-            return PREDEFINED_CATEGORIES.find(cat => cat.name === categoryName) || 
-                   { name: categoryName, emoji: '📝', color: 'bg-gray-100 text-gray-800' };
-        }
-
-        function showEntryModal() {
-            if (!state.selectedEntry) return;
-
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50';
-            
-            const modalContent = document.createElement('div');
-            modalContent.className = 'bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto';
-            
-            const modalInner = document.createElement('div');
-            modalInner.className = 'p-6';
-            
-            const isDecrypted = state.selectedEntry.isDecrypted;
-            const canRetryDecryption = state.selectedEntry.canRetryDecryption;
-            
-            let statusContent = '';
-            let actionButtons = '';
-            
-            if (isDecrypted) {
-                statusContent = '<div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">' +
-                    '<p class="text-sm text-green-800">' +
-                        '<strong>✅ Decrypted:</strong> This entry has been successfully decrypted using your private key.' +
-                    '</p>' +
-                '</div>';
-            } else if (canRetryDecryption) {
-                statusContent = '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">' +
-                    '<p class="text-sm text-yellow-800">' +
-                        '<strong>🔒 Encrypted:</strong> This entry is encrypted. Click the button below to decrypt it with your wallet signature.' +
-                    '</p>' +
-                '</div>';
-                actionButtons = '<button onclick="decryptCurrentEntry()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors mr-2">🔓 Decrypt Entry</button>';
-            } else {
-                statusContent = '<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">' +
-                    '<p class="text-sm text-blue-800">' +
-                        '<strong>🔒 Encrypted Entry:</strong> This entry is encrypted and stored on IPFS. Click the button below to decrypt it with your wallet signature.' +
-                    '</p>' +
-                '</div>';
-                actionButtons = '<button onclick="decryptCurrentEntry()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors mr-2">🔓 Decrypt Entry</button>';
-            }
-
-            // Category display
-            const categoryInfo = getCategoryInfo(state.selectedEntry.category);
-            const categoryDisplay = state.selectedEntry.category ? 
-                `<div class="flex items-center space-x-1">
-                    <span>${categoryInfo.emoji}</span>
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${categoryInfo.color}">${state.selectedEntry.category}</span>
-                </div>` : '';
-
-            // Tags display
-            const tagsDisplay = state.selectedEntry.tags && state.selectedEntry.tags.length > 0 ? 
-                `<div class="flex flex-wrap gap-1">
-                    ${state.selectedEntry.tags.map(tag => 
-                        `<span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">#${tag}</span>`
-                    ).join('')}
-                </div>` : '';
-            
-            modalInner.innerHTML = 
-                '<div class="flex items-center justify-between mb-4">' +
-                    '<h2 class="text-2xl font-bold text-gray-900">' + state.selectedEntry.title + '</h2>' +
-                    '<button onclick="closeEntryModal()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>' +
-                '</div>' +
-                '<div class="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">' +
-                    '<div class="flex items-center space-x-1">' +
-                        '<span>📅</span>' +
-                        '<span>' + new Date(state.selectedEntry.timestamp).toLocaleString() + '</span>' +
-                    '</div>' +
-                    '<div class="flex items-center space-x-1">' +
-                        '<span>🔒</span>' +
-                        '<span>' + (isDecrypted ? 'Decrypted' : 'Encrypted') + '</span>' +
-                    '</div>' +
-                    '<div class="flex items-center space-x-1">' +
-                        '<span>⛓️</span>' +
-                        '<span>On Blockchain</span>' +
-                    '</div>' +
-                '</div>' +
-                (categoryDisplay ? '<div class="mb-4">' + categoryDisplay + '</div>' : '') +
-                (tagsDisplay ? '<div class="mb-4">' + tagsDisplay + '</div>' : '') +
-                '<div class="prose max-w-none">' +
-                    statusContent +
-                    '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4">' +
-                        '<p class="whitespace-pre-wrap text-gray-700 leading-relaxed">' + state.selectedEntry.content + '</p>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="mt-6 flex items-center space-x-2">' +
-                    actionButtons +
-                    '<button onclick="closeEntryModal()" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors">Close</button>' +
-                '</div>' +
-                '<div class="mt-6 pt-4 border-t border-gray-200">' +
-                    '<div class="text-xs text-gray-500 space-y-1">' +
-                        '<div><strong>IPFS Hash:</strong> ' + state.selectedEntry.ipfsHash + '</div>' +
-                        '<div><strong>Transaction:</strong> ' + state.selectedEntry.txHash + '</div>' +
-                        '<div><strong>Entry Size:</strong> ' + (state.selectedEntry.ipfsSize || 'Unknown') + ' bytes</div>' +
-                    '</div>' +
-                '</div>';
-
-            modalContent.appendChild(modalInner);
-            modal.appendChild(modalContent);
-            document.body.appendChild(modal);
-        }
-
-        window.decryptCurrentEntry = async function() {
-            if (state.selectedEntry) {
-                console.log('Attempting to decrypt entry:', state.selectedEntry.title);
-                
-                try {
-                    // For older entries, we'll use a different approach since we can't access the real IPFS data
-                    if (!state.selectedEntry.ipfsData || state.selectedEntry.content.includes('This entry would show your decrypted journal content here')) {
-                        // This is a legacy entry - simulate successful decryption
-                        console.log('Decrypting legacy entry...');
-                        
-                        // Get signature to show the process works
-                        const message = 'Decrypt journal entry: ' + Date.now();
-                        const signature = await window.ethereum.request({
-                            method: 'personal_sign',
-                            params: [message, state.walletAddress],
-                        });
-                        
-                        console.log('Got signature for legacy decryption');
-                        
-                        // Show realistic decrypted content for demo
-                        const simulatedContent = `📝 Journal Entry Successfully Decrypted!
-
-This demonstrates your blockchain journal's decryption capability.
-
-✅ Your wallet signature was used to decrypt this entry
-🔗 Original entry stored on blockchain at: ${state.selectedEntry.ipfsHash}
-📅 Entry date: ${new Date(state.selectedEntry.timestamp).toLocaleDateString()}
-
-In a production environment with real IPFS storage, this would show your actual encrypted journal content that only you can decrypt with your private key.
-
-The encryption/decryption process is working correctly - this entry was successfully "unlocked" using your MetaMask wallet signature! 🔐→🔓`;
-
-                        // Update the selected entry
-                        state.selectedEntry = {
-                            ...state.selectedEntry,
-                            title: state.selectedEntry.title,
-                            content: simulatedContent,
-                            category: 'Personal',
-                            tags: ['decrypted', 'legacy'],
-                            isDecrypted: true
-                        };
-                        
-                    } else {
-                        // This entry has real IPFS data - try actual decryption
-                        console.log('Attempting real decryption with IPFS data...');
-                        
-                        const message = 'Decrypt journal entry: ' + Date.now();
-                        const signature = await window.ethereum.request({
-                            method: 'personal_sign',
-                            params: [message, state.walletAddress],
-                        });
-                        
-                        console.log('Got signature for real decryption');
-                        
-                        // Try to decrypt with the fresh signature
-                        const decrypted = decryptEntry(state.selectedEntry.ipfsData, signature);
-                        
-                        if (decrypted.success) {
-                            state.selectedEntry = {
-                                ...state.selectedEntry,
-                                title: decrypted.title,
-                                content: decrypted.content,
-                                category: decrypted.category || 'Personal',
-                                tags: Array.isArray(decrypted.tags) ? decrypted.tags : ['decrypted'],
-                                isDecrypted: true
-                            };
-                        } else {
-                            // Fallback to simulated content if real decryption fails
-                            state.selectedEntry = {
-                                ...state.selectedEntry,
-                                content: 'Decryption attempted but content could not be recovered from IPFS. This would contain your original journal entry in a production environment.',
-                                isDecrypted: true
-                            };
-                        }
-                    }
-                    
-                    // Update in the entries array too
-                    const entryIndex = state.entries.findIndex(e => e.id === state.selectedEntry.id);
-                    if (entryIndex !== -1) {
-                        state.entries[entryIndex] = { ...state.selectedEntry };
-                    }
-                    
-                    // Refresh the modal and entries display
-                    showEntryModal();
-                    updateEntriesDisplay();
-                    
-                    console.log('✅ Entry decrypted successfully!');
-                    
-                } catch (error) {
-                    console.error('Decryption failed:', error);
-                    if (error.code === 4001) {
-                        alert('Decryption cancelled by user');
-                    } else {
-                        alert('Failed to decrypt entry: ' + error.message);
-                    }
-                }
-            }
-        };
-
-        function closeEntryModal() {
-            const modal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
-            if (modal) {
-                modal.remove();
-                state.selectedEntry = null;
-            }
-        }
-
-        function updateFilters() {
-            const categoryFilter = document.getElementById('categoryFilter');
-            const tagFilter = document.getElementById('tagFilter');
-            
-            if (categoryFilter) {
-                const categories = [...new Set(state.entries.map(e => e.category).filter(c => c))];
-                categoryFilter.innerHTML = '<option value="">All Categories</option>' +
-                    categories.map(cat => `<option value="${cat}" ${cat === state.selectedCategoryFilter ? 'selected' : ''}>${cat}</option>`).join('');
-            }
-            
-            if (tagFilter) {
-                const tags = Array.from(state.allTags);
-                tagFilter.innerHTML = '<option value="">All Tags</option>' +
-                    tags.map(tag => `<option value="${tag}" ${tag === state.selectedTagFilter ? 'selected' : ''}>#${tag}</option>`).join('');
-            }
-        }
-
-        function renderWelcomeScreen() {
-            const app = document.getElementById('app');
-            app.innerHTML = '';
-            
-            const container = document.createElement('div');
-            container.className = 'min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4';
-            
-            const card = document.createElement('div');
-            card.className = 'bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center';
-            
-            const header = document.createElement('div');
-            header.className = 'mb-6';
-            
-            const title = document.createElement('h1');
-            title.className = 'text-3xl font-bold text-gray-900 mb-6';
-            title.textContent = 'Life Examined';
-            
-            const button = document.createElement('button');
-            button.id = 'connectButton';
-            button.className = 'w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors hover:shadow-lg';
-            button.textContent = 'Connect MetaMask to Polygon';
-            button.addEventListener('click', connectWallet);
-            
-            const status = document.createElement('div');
-            status.id = 'status';
-            status.className = 'mt-4 text-sm text-gray-600';
-            
-            header.appendChild(title);
-            card.appendChild(header);
-            card.appendChild(button);
-            card.appendChild(status);
-            container.appendChild(card);
-            app.appendChild(container);
-        }
-
-        function renderMainApp() {
-            const app = document.getElementById('app');
-            app.innerHTML = '';
-
-            const mainContainer = document.createElement('div');
-            mainContainer.className = 'min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100';
-
-            // Header
-            const header = document.createElement('header');
-            header.className = 'bg-white shadow-sm border-b';
-            
-            const headerContent = document.createElement('div');
-            headerContent.className = 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8';
-            
-            const headerInner = document.createElement('div');
-            headerInner.className = 'flex justify-between items-center py-4';
-            
-            const titleDiv = document.createElement('div');
-            titleDiv.className = 'flex items-center space-x-3';
-            
-            const headerTitle = document.createElement('h1');
-            headerTitle.className = 'text-2xl font-bold text-gray-900';
-            headerTitle.textContent = 'Life Examined';
-            
-            const statusDiv = document.createElement('div');
-            statusDiv.className = 'flex items-center space-x-4';
-            
-            const walletInfo = document.createElement('div');
-            walletInfo.className = 'text-sm text-gray-600';
-            walletInfo.textContent = 'Connected: ' + state.walletAddress.slice(0, 6) + '...' + state.walletAddress.slice(-4);
-            
-            const connectionStatus = document.createElement('div');
-            connectionStatus.className = 'flex items-center space-x-1 text-green-600 text-sm';
-            connectionStatus.innerHTML = '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span>Polygon Connected</span>';
-            
-            titleDiv.appendChild(headerTitle);
-            statusDiv.appendChild(walletInfo);
-            statusDiv.appendChild(connectionStatus);
-            headerInner.appendChild(titleDiv);
-            headerInner.appendChild(statusDiv);
-            headerContent.appendChild(headerInner);
-            header.appendChild(headerContent);
-
-            // Main content
-            const mainContent = document.createElement('div');
-            mainContent.className = 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8';
-            
-            const grid = document.createElement('div');
-            grid.className = 'grid grid-cols-1 lg:grid-cols-3 gap-8';
-
-            // New entry section
-            const newEntrySection = document.createElement('div');
-            newEntrySection.className = 'lg:col-span-2';
-            
-            const newEntryCard = document.createElement('div');
-            newEntryCard.className = 'bg-white rounded-2xl shadow-lg p-6';
-            
-            const newEntryHeader = document.createElement('div');
-            newEntryHeader.className = 'flex items-center justify-between mb-6';
-            newEntryHeader.innerHTML = '<h2 class="text-xl font-semibold text-gray-900">New Entry</h2><div class="flex items-center space-x-2 text-sm text-gray-500"><span>🔒 Encrypted before blockchain</span></div>';
-            
-            const formDiv = document.createElement('div');
-            formDiv.className = 'space-y-4';
-            
-            const titleInput = document.createElement('input');
-            titleInput.type = 'text';
-            titleInput.id = 'titleInput';
-            titleInput.placeholder = 'Entry title...';
-            titleInput.value = state.currentTitle;
-            titleInput.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
-            titleInput.addEventListener('input', (e) => {
-                state.currentTitle = e.target.value;
-                updateSaveButton();
-            });
-
-            // Category selector
-            const categoryDiv = document.createElement('div');
-            categoryDiv.innerHTML = '<label class="block text-sm font-medium text-gray-700 mb-2">Category</label>';
-            
-            const categorySelect = document.createElement('select');
-            categorySelect.id = 'categorySelect';
-            categorySelect.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
-            categorySelect.innerHTML = '<option value="">Select a category...</option>' +
-                PREDEFINED_CATEGORIES.map(cat => 
-                    `<option value="${cat.name}" ${cat.name === state.currentCategory ? 'selected' : ''}>${cat.emoji} ${cat.name}</option>`
-                ).join('');
-            categorySelect.addEventListener('change', (e) => {
-                state.currentCategory = e.target.value;
-                updateSaveButton();
-            });
-            
-            categoryDiv.appendChild(categorySelect);
-
-            // Tags input
-            const tagsDiv = document.createElement('div');
-            tagsDiv.innerHTML = '<label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>';
-            
-            const tagContainer = document.createElement('div');
-            tagContainer.id = 'tagContainer';
-            tagContainer.className = 'tag-input';
-            
-            tagsDiv.appendChild(tagContainer);
-            
-            const contentInput = document.createElement('textarea');
-            contentInput.id = 'contentInput';
-            contentInput.placeholder = 'Write your thoughts here... Everything you write will be encrypted and stored on Polygon blockchain.';
-            contentInput.rows = 10;
-            contentInput.value = state.currentEntry;
-            contentInput.className = 'w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none';
-            contentInput.addEventListener('input', (e) => {
-                state.currentEntry = e.target.value;
-                updateSaveButton();
-            });
-            
-            const saveButton = document.createElement('button');
-            saveButton.id = 'saveButton';
-            saveButton.className = 'flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 px-6 rounded-lg transition-colors';
-            const buttonText = state.isUploading ? 'Encrypting → IPFS → Blockchain...' : 'Save to Blockchain';
-            saveButton.innerHTML = '<span>➕</span><span>' + buttonText + '</span>';
-            saveButton.addEventListener('click', saveEntry);
-            
-            formDiv.appendChild(titleInput);
-            formDiv.appendChild(categoryDiv);
-            formDiv.appendChild(tagsDiv);
-            formDiv.appendChild(contentInput);
-            formDiv.appendChild(saveButton);
-            newEntryCard.appendChild(newEntryHeader);
-            newEntryCard.appendChild(formDiv);
-            newEntrySection.appendChild(newEntryCard);
-
-            // Entries section
-            const entriesSection = document.createElement('div');
-            entriesSection.className = 'lg:col-span-1';
-            
-            const entriesCard = document.createElement('div');
-            entriesCard.className = 'bg-white rounded-2xl shadow-lg p-6';
-            
-            const entriesHeader = document.createElement('div');
-            entriesHeader.className = 'flex items-center justify-between mb-4';
-            entriesHeader.innerHTML = '<h2 class="text-xl font-semibold text-gray-900">Your Entries</h2><span>📖</span>';
-            
-            // Filters section
-            const filtersDiv = document.createElement('div');
-            filtersDiv.className = 'space-y-3 mb-4';
-            
-            const searchInput = document.createElement('input');
-            searchInput.type = 'text';
-            searchInput.id = 'searchInput';
-            searchInput.placeholder = 'Search entries...';
-            searchInput.value = state.searchTerm;
-            searchInput.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
-            searchInput.addEventListener('input', (e) => {
-                state.searchTerm = e.target.value;
-                updateEntriesDisplay();
-            });
-
-            const categoryFilter = document.createElement('select');
-            categoryFilter.id = 'categoryFilter';
-            categoryFilter.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
-            categoryFilter.addEventListener('change', (e) => {
-                state.selectedCategoryFilter = e.target.value;
-                updateEntriesDisplay();
-            });
-
-            const tagFilter = document.createElement('select');
-            tagFilter.id = 'tagFilter';
-            tagFilter.className = 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
-            tagFilter.addEventListener('change', (e) => {
-                state.selectedTagFilter = e.target.value;
-                updateEntriesDisplay();
-            });
-            
-            filtersDiv.appendChild(searchInput);
-            filtersDiv.appendChild(categoryFilter);
-            filtersDiv.appendChild(tagFilter);
-            
-            const entriesContainer = document.createElement('div');
-            entriesContainer.className = 'space-y-3 max-h-96 overflow-y-auto';
-            entriesContainer.id = 'entriesContainer';
-            
-            entriesCard.appendChild(entriesHeader);
-            entriesCard.appendChild(filtersDiv);
-            entriesCard.appendChild(entriesContainer);
-            entriesSection.appendChild(entriesCard);
-
-            grid.appendChild(newEntrySection);
-            grid.appendChild(entriesSection);
-            mainContent.appendChild(grid);
-            mainContainer.appendChild(header);
-            mainContainer.appendChild(mainContent);
-            app.appendChild(mainContainer);
-
-            updateTagsDisplay();
-            updateEntriesDisplay();
-            updateFilters();
-            updateSaveButton();
-        }
-
-        function updateEntriesDisplay() {
-            const entriesContainer = document.getElementById('entriesContainer');
-            if (!entriesContainer) return;
-
-            let filteredEntries = state.entries.filter(entry => {
-                const matchesSearch = !state.searchTerm || 
-                    entry.title.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
-                    entry.content.toLowerCase().includes(state.searchTerm.toLowerCase()) ||
-                    (entry.tags && entry.tags.some(tag => tag.toLowerCase().includes(state.searchTerm.toLowerCase())));
-                
-                const matchesCategory = !state.selectedCategoryFilter || entry.category === state.selectedCategoryFilter;
-                
-                const matchesTag = !state.selectedTagFilter || 
-                    (entry.tags && entry.tags.includes(state.selectedTagFilter));
-                
-                return matchesSearch && matchesCategory && matchesTag;
-            });
-
-            entriesContainer.innerHTML = '';
-
-            if (filteredEntries.length === 0) {
-                const emptyDiv = document.createElement('div');
-                emptyDiv.className = 'text-center py-8 text-gray-500';
-                let message = 'No entries found.';
-                if (state.entries.length === 0) {
-                    message = 'No entries yet. Start writing!';
-                } else if (state.searchTerm || state.selectedCategoryFilter || state.selectedTagFilter) {
-                    message = 'No matching entries found.';
-                }
-                emptyDiv.innerHTML = '<span class="text-4xl">📖</span><p>' + message + '</p>';
-                entriesContainer.appendChild(emptyDiv);
-            } else {
-                filteredEntries.forEach(entry => {
-                    const entryDiv = document.createElement('div');
-                    entryDiv.className = 'p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors';
-                    entryDiv.addEventListener('click', () => viewEntry(entry.id));
-                    
-                    const statusIcon = entry.isDecrypted ? '🔓' : (entry.canRetryDecryption ? '🔒' : '🔐');
-                    const statusColor = entry.isDecrypted ? 'text-green-500' : (entry.canRetryDecryption ? 'text-yellow-500' : 'text-gray-500');
-                    
-                    const categoryInfo = getCategoryInfo(entry.category);
-                    const categoryDisplay = entry.category ? 
-                        `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${categoryInfo.color}">${categoryInfo.emoji} ${entry.category}</span>` : '';
-                    
-                    const tagsDisplay = entry.tags && entry.tags.length > 0 ? 
-                        `<div class="flex flex-wrap gap-1 mt-2">
-                            ${entry.tags.slice(0, 3).map(tag => 
-                                `<span class="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">#${tag}</span>`
-                            ).join('')}
-                            ${entry.tags.length > 3 ? `<span class="text-xs text-gray-500">+${entry.tags.length - 3}</span>` : ''}
-                        </div>` : '';
-                    
-                    entryDiv.innerHTML = 
-                        '<div class="flex items-start justify-between mb-2">' +
-                            '<h3 class="font-medium text-gray-900 truncate flex-1 mr-2">' + entry.title + '</h3>' +
-                            '<span class="' + statusColor + ' flex-shrink-0">' + statusIcon + '</span>' +
-                        '</div>' +
-                        (categoryDisplay ? '<div class="mb-2">' + categoryDisplay + '</div>' : '') +
-                        '<p class="text-sm text-gray-600 line-clamp-2 mb-2">' + entry.content + '</p>' +
-                        tagsDisplay +
-                        '<div class="flex items-center justify-between mt-2 text-xs text-gray-500">' +
-                            '<span>' + new Date(entry.timestamp).toLocaleDateString() + '</span>' +
-                            '<span>IPFS: ' + entry.ipfsHash.slice(0, 6) + '...</span>' +
-                        '</div>';
-                    
-                    entriesContainer.appendChild(entryDiv);
-                });
-            }
-        }
-
-        function updateSaveButton() {
-            const saveButton = document.getElementById('saveButton');
-            if (saveButton) {
-                const isDisabled = !state.currentTitle.trim() || !state.currentEntry.trim() || state.isUploading;
-                saveButton.disabled = isDisabled;
-                if (isDisabled) {
-                    saveButton.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    saveButton.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            }
-        }
-
-        // Global functions
-        window.closeEntryModal = closeEntryModal;
-        window.removeTag = removeTag;
-
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Life Examined app with tags and categories initializing...');
-            
-            if (checkMetaMask()) {
-                updateStatus('MetaMask detected! Click to connect.');
-            }
-            
-            renderWelcomeScreen();
+        <p class="text-xs text-zinc-500 mt-2">Passphrase never leaves this device. We use AES‑GCM 256 with PBKDF2 (150k iterations). Only ciphertext is stored or uploaded.</p>
+      </div>
+    </section>
+
+    <!-- Composer -->
+    <section class="mt-6">
+      <div class="card p-4">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="font-semibold">New entry</h2>
+          <div class="flex items-center gap-2">
+            <span id="encBadge" class="badge badge-red">🔒 Locked</span>
+            <label class="flex items-center gap-2 text-xs">
+              <input id="chainToggle" type="checkbox" class="accent-indigo-600">
+              Also write to Polygon (on‑chain hash only)
+            </label>
+          </div>
+        </div>
+        <div class="mt-3 grid gap-3">
+          <input id="title" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Title" />
+          <div class="grid sm:grid-cols-2 gap-3">
+            <input id="category" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Category (optional)" />
+            <div id="tagsBox" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-2 flex flex-wrap gap-2">
+              <input id="tagInput" class="flex-1 min-w-[10ch] bg-transparent outline-none" placeholder="Add tag and press Enter" />
+            </div>
+          </div>
+          <textarea id="body" rows="10" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Write your thoughts (plaintext is never saved or sent)"></textarea>
+          <div class="flex flex-wrap items-center gap-3">
+            <button id="saveLocalBtn" class="btn btn-primary">Save locally</button>
+            <button id="saveIpfsBtn" class="btn btn-indigo">Save + Pin to IPFS</button>
+            <span class="text-xs text-zinc-500">Local save keeps the encrypted entry in your browser. Pinning stores an encrypted copy on IPFS via your Worker. If the Polygon toggle is on and you’re connected, the IPFS hash is also recorded on‑chain.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filters + List -->
+    <section class="mt-6">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="font-semibold">Entries</h2>
+        <div class="flex flex-wrap gap-2">
+          <input id="search" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm" placeholder="Search (decrypt first)" />
+          <select id="filterCategory" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm">
+            <option value="">All categories</option>
+          </select>
+          <select id="filterTag" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm">
+            <option value="">All tags</option>
+          </select>
+          <button id="exportBtn" class="btn btn-ghost text-sm">Export</button>
+          <label class="btn btn-ghost text-sm cursor-pointer">Import<input id="importFile" type="file" accept="application/json" class="hidden"></label>
+          <button id="clearBtn" class="btn btn-ghost text-sm">Clear all (local)</button>
+        </div>
+      </div>
+      <div id="entries" class="mt-3 grid gap-3"></div>
+    </section>
+
+    <footer class="mt-10 text-xs text-zinc-500">
+      <div class="mono">Worker: <span id="workerUrl" class="wrap-anywhere"></span></div>
+      <div class="mono">Contract: <span id="contractAddr"></span></div>
+      <p class="mt-1">Worker routes: <code class="mono">GET /health</code>, <code class="mono">POST /pin/json</code>, <code class="mono">GET /ipfs/:cid</code></p>
+    </footer>
+  </div>
+
+<script>
+/* =========================== CONFIG =========================== */
+const WORKER_URL = "https://life-examined-worker.sjx-feb.workers.dev"; // update if needed
+// Polygon mainnet chainId 0x89. Change to Mumbai if you prefer testnet.
+const POLYGON_CHAIN_ID = "0x89";
+
+// Your existing contract (from earlier code).
+// NOTE: Storing a plaintext title on-chain can leak metadata.
+// We'll default to storing a placeholder title. Change CHAIN_TITLE_MODE to 'plaintext' or 'encrypted' if you want otherwise.
+const CONTRACT_ADDRESS = "0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A";
+const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted'
+
+const CONTRACT_ABI = [
+  {
+    "inputs":[
+      {"internalType":"string","name":"_ipfsHash","type":"string"},
+      {"internalType":"uint256","name":"_timestamp","type":"uint256"},
+      {"internalType":"string","name":"_title","type":"string"}
+    ],
+    "name":"storeEntry",
+    "outputs":[],
+    "stateMutability":"nonpayable",
+    "type":"function"
+  },
+  {
+    "inputs":[],
+    "name":"getMyEntries",
+    "outputs":[
+      {
+        "components":[
+          {"internalType":"string","name":"ipfsHash","type":"string"},
+          {"internalType":"uint256","name":"timestamp","type":"uint256"},
+          {"internalType":"string","name":"title","type":"string"},
+          {"internalType":"address","name":"author","type":"address"}
+        ],
+        "internalType":"struct LifeExamined.Entry[]",
+        "name":"",
+        "type":"tuple[]"
+      }
+    ],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs":[],
+    "name":"totalEntries",
+    "outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
+    "stateMutability":"view",
+    "type":"function"
+  }
+];
+
+document.getElementById('workerUrl').textContent = WORKER_URL;
+document.getElementById('contractAddr').textContent = CONTRACT_ADDRESS;
+
+/* ============================ STATE =========================== */
+const state = {
+  passphrase: null,
+  entries: [], // encrypted entries
+  tagsSet: new Set(),
+  categoriesSet: new Set(),
+
+  // chain state
+  web3: null,
+  isConnected: false,
+  wallet: "",
+  contract: null
+};
+
+const STORAGE_KEY = "le.entries.v3";
+
+/* ===================== DOM REFERENCES ======================== */
+const els = {
+  pass: document.getElementById('passphrase'),
+  unlock: document.getElementById('unlockBtn'),
+  lock: document.getElementById('lockBtn'),
+  encBadge: document.getElementById('encBadge'),
+  title: document.getElementById('title'),
+  category: document.getElementById('category'),
+  tagInput: document.getElementById('tagInput'),
+  tagsBox: document.getElementById('tagsBox'),
+  body: document.getElementById('body'),
+  saveLocal: document.getElementById('saveLocalBtn'),
+  saveIpfs: document.getElementById('saveIpfsBtn'),
+  entries: document.getElementById('entries'),
+  export: document.getElementById('exportBtn'),
+  import: document.getElementById('importFile'),
+  clear: document.getElementById('clearBtn'),
+  search: document.getElementById('search'),
+  filterCategory: document.getElementById('filterCategory'),
+  filterTag: document.getElementById('filterTag'),
+  workerDot: document.getElementById('workerDot'),
+  workerText: document.getElementById('workerText'),
+  chainDot: document.getElementById('chainDot'),
+  chainText: document.getElementById('chainText'),
+  connectBtn: document.getElementById('connectBtn'),
+  chainToggle: document.getElementById('chainToggle'),
+};
+
+/* ===================== UTILITIES (Crypto) ===================== */
+const te = new TextEncoder();
+const td = new TextDecoder();
+function b64e(bytes){ return btoa(String.fromCharCode(...new Uint8Array(bytes))); }
+function b64d(str){ return Uint8Array.from(atob(str), c=>c.charCodeAt(0)); }
+
+async function deriveKey(passphrase, saltBytes) {
+  const baseKey = await crypto.subtle.importKey('raw', te.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt: saltBytes, iterations: 150000, hash:'SHA-256' },
+    baseKey,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+async function encryptString(plaintext, passphrase) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(passphrase, salt);
+  const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, te.encode(plaintext));
+  return { salt: b64e(salt), iv: b64e(iv), ciphertext: b64e(ct) };
+}
+async function decryptString(bundle, passphrase) {
+  const salt = b64d(bundle.salt);
+  const iv   = b64d(bundle.iv);
+  const ct   = b64d(bundle.ciphertext);
+  const key  = await deriveKey(passphrase, salt);
+  const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+  return td.decode(pt);
+}
+
+/* =========================== TOAST =========================== */
+function toast(msg, type='info'){
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.className = 'toast ' + (type==='error'?'toast-err':type==='success'?'toast-ok':'toast-info');
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2200);
+  setTimeout(()=> t.remove(), 2800);
+}
+
+/* ========================= TAG INPUT ========================= */
+let currentTags = [];
+function renderTags(){
+  const box = els.tagsBox;
+  const input = els.tagInput;
+  box.innerHTML = '';
+  for(const tag of currentTags){
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `<span>#${tag}</span>`;
+    const x = document.createElement('button'); x.textContent='×';
+    x.onclick = () => { currentTags = currentTags.filter(t=>t!==tag); renderTags(); };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  }
+  box.appendChild(input);
+}
+els.tagInput.addEventListener('keydown', e=>{
+  if(e.key==='Enter' || e.key===','){
+    e.preventDefault();
+    const v = els.tagInput.value.trim().replace(/^#/,'');
+    if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); }
+    els.tagInput.value = '';
+  }
+});
+els.tagInput.addEventListener('blur', ()=>{
+  const v = els.tagInput.value.trim().replace(/^#/,'');
+  if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); }
+  els.tagInput.value='';
+});
+
+/* ========================= STORAGE =========================== */
+function loadEntries(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state.entries = raw ? JSON.parse(raw) : [];
+  }catch{ state.entries=[]; }
+}
+function persistEntries(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries)); }
+
+/* ======================= WORKER CALLS ======================== */
+async function checkWorker(){
+  try{
+    const res = await fetch(`${WORKER_URL}/health`, {mode:'cors'});
+    if(res.ok){
+      els.workerDot.classList.remove('bg-red-500','bg-zinc-400');
+      els.workerDot.classList.add('bg-emerald-500');
+      els.workerText.textContent='Worker healthy';
+      return true;
+    }
+    throw new Error('health not ok');
+  }catch{
+    els.workerDot.classList.remove('bg-emerald-500');
+    els.workerDot.classList.add('bg-red-500');
+    els.workerText.textContent='Worker unreachable';
+    return false;
+  }
+}
+async function pinJsonToIpfs(name, jsonObj){
+  const res = await fetch(`${WORKER_URL}/pin/json`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name, payload: jsonObj, data: jsonObj }),
+    mode:'cors',
+    credentials:'omit',
+  });
+  if(!res.ok){
+    const t = await res.text().catch(()=>'');
+    throw new Error(`Pin failed ${res.status}: ${t}`);
+  }
+  return res.json(); // { cid } or { IpfsHash }
+}
+
+/* ===================== WALLET / POLYGON ====================== */
+async function connectWallet(){
+  if(!window.ethereum){ toast('MetaMask not detected', 'error'); return; }
+  try{
+    // request accounts
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    // switch to Polygon if needed
+    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    if(chainId !== POLYGON_CHAIN_ID){
+      try{
+        await window.ethereum.request({
+          method:'wallet_switchEthereumChain',
+          params:[{ chainId: POLYGON_CHAIN_ID }]
         });
-    </script>
+      }catch(err){
+        if(err && err.code === 4902){
+          await window.ethereum.request({
+            method:'wallet_addEthereumChain',
+            params:[{
+              chainId: POLYGON_CHAIN_ID,
+              chainName:'Polygon Mainnet',
+              nativeCurrency:{ name:'POL', symbol:'POL', decimals:18 },
+              rpcUrls:['https://polygon-rpc.com/'],
+              blockExplorerUrls:['https://polygonscan.com/']
+            }]
+          });
+        }else{ throw err; }
+      }
+    }
+    state.web3 = new Web3(window.ethereum);
+    state.wallet = accounts[0];
+    state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+    state.isConnected = true;
+    els.chainDot.classList.remove('bg-zinc-400','bg-red-500');
+    els.chainDot.classList.add('bg-emerald-500');
+    els.chainText.textContent = `Wallet: ${state.wallet.slice(0,6)}…${state.wallet.slice(-4)}`;
+    toast('Wallet connected', 'success');
+  }catch(e){
+    console.error(e);
+    els.chainDot.classList.remove('bg-emerald-500');
+    els.chainDot.classList.add('bg-red-500');
+    els.chainText.textContent = 'Wallet: connection failed';
+    toast('Wallet connection failed', 'error');
+  }
+}
+
+async function storeOnChain({ ipfsHash, title, timestamp }){
+  if(!state.isConnected || !state.contract || !state.wallet){
+    throw new Error('Wallet not connected');
+  }
+  // Respect privacy mode for title
+  let titleToSend = "Encrypted Entry";
+  if(CHAIN_TITLE_MODE === "plaintext"){
+    titleToSend = title || "Untitled";
+  }else if(CHAIN_TITLE_MODE === "encrypted"){
+    // tiny encrypted title (with same passphrase) to avoid plaintext on-chain
+    if(!state.passphrase) throw new Error('Unlock first to encrypt on-chain title');
+    const enc = await encryptString(title || "Untitled", state.passphrase);
+    titleToSend = JSON.stringify(enc); // warning: storing JSON string increases gas
+  }
+
+  // estimate gas
+  let gasEstimate;
+  try{
+    gasEstimate = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
+      .estimateGas({ from: state.wallet });
+  }catch{
+    gasEstimate = 300000; // fallback
+  }
+
+  const tx = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
+    .send({ from: state.wallet, gas: Math.floor(gasEstimate * 1.2) });
+  return tx.transactionHash;
+}
+
+/* ============================ UI ============================= */
+function setLockedUI(locked){
+  if(locked){ els.encBadge.textContent='🔒 Locked'; els.encBadge.className='badge badge-red'; }
+  else{ els.encBadge.textContent='🔓 Unlocked'; els.encBadge.className='badge badge-green'; }
+}
+function entryCard(entry){
+  const card = document.createElement('div');
+  card.className = 'card p-4 space-y-2';
+
+  const head = document.createElement('div');
+  head.className='flex items-start justify-between gap-3';
+
+  const left = document.createElement('div');
+  left.innerHTML = `<div class="text-xs text-zinc-500">${new Date(entry.ts).toLocaleString()}</div>
+                    <div class="text-lg font-medium wrap-anywhere" id="t_${entry.id}">[encrypted title]</div>`;
+
+  const right = document.createElement('div');
+  right.className='flex gap-2 flex-wrap';
+
+  const decBtn = document.createElement('button');
+  decBtn.className='btn btn-ghost text-sm'; decBtn.textContent='Decrypt';
+
+  const pinBtn = document.createElement('button');
+  pinBtn.className='btn btn-indigo text-sm'; pinBtn.textContent = entry.cid ? 'Pinned ✓' : 'Pin to IPFS';
+  pinBtn.disabled = !!entry.cid;
+
+  right.appendChild(decBtn); right.appendChild(pinBtn);
+  head.appendChild(left); head.appendChild(right);
+
+  const body = document.createElement('div');
+  body.className='text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap wrap-anywhere';
+  body.textContent='[encrypted body]';
+
+  const meta = document.createElement('div');
+  meta.className='flex flex-wrap items-center gap-2 text-xs text-zinc-500';
+  const catSpan = document.createElement('span'); catSpan.textContent='Category: (encrypted)';
+  const tagsSpan = document.createElement('span'); tagsSpan.textContent='Tags: (encrypted)';
+  meta.appendChild(catSpan); meta.appendChild(tagsSpan);
+
+  const linkWrap = document.createElement('div');
+  if(entry.cid){
+    const a = document.createElement('a');
+    a.href = `${WORKER_URL}/ipfs/${entry.cid}`; a.target='_blank'; a.rel='noopener';
+    a.className='text-xs text-indigo-600 hover:underline';
+    a.textContent = `Open via worker gateway: ${entry.cid}`;
+    linkWrap.appendChild(a);
+  }
+  if(entry.tx){
+    const txa = document.createElement('a');
+    txa.href = `https://polygonscan.com/tx/${entry.tx}`; txa.target='_blank'; txa.rel='noopener';
+    txa.className='ml-2 text-xs text-emerald-600 hover:underline';
+    txa.textContent = 'View on Polygonscan';
+    linkWrap.appendChild(txa);
+  }
+
+  card.appendChild(head); card.appendChild(body); card.appendChild(meta); card.appendChild(linkWrap);
+
+  decBtn.onclick = async () => {
+    if(!state.passphrase){ toast('Unlock with your passphrase first.'); return; }
+    try{
+      const title = await decryptString(entry.title, state.passphrase);
+      const text  = await decryptString(entry.body, state.passphrase);
+      let category = '', tags=[];
+      try{ category = await decryptString(entry.category, state.passphrase);}catch{}
+      try{ const t = await decryptString(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
+
+      left.querySelector(`#t_${entry.id}`).textContent = title || '(untitled)';
+      body.textContent = text || '(empty)';
+      catSpan.textContent = 'Category: ' + (category||'—');
+      tagsSpan.textContent = 'Tags: ' + (Array.isArray(tags)&&tags.length? '#'+tags.join(' #') : '—');
+
+      if(category) state.categoriesSet.add(category);
+      if(tags && tags.length){ for(const t of tags) state.tagsSet.add(t); }
+      refreshFiltersUI();
+      decBtn.textContent='Decrypted'; decBtn.disabled=true;
+    }catch(e){
+      console.error(e); toast('Decryption failed — wrong passphrase?', 'error');
+    }
+  };
+
+  pinBtn.onclick = async () => {
+    pinBtn.disabled=true; pinBtn.textContent='Pinning…';
+    try{
+      const payload = {
+        ts: entry.ts,
+        title: entry.title,
+        body: entry.body,
+        category: entry.category,
+        tags: entry.tags,
+        version: 3
+      };
+      const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payload);
+      entry.cid = res.cid || res.IpfsHash || res.hash;
+      // Optional on-chain
+      if(els.chainToggle.checked && state.isConnected){
+        try {
+          const titlePlain = state.passphrase ? await decryptString(entry.title, state.passphrase) : 'Untitled';
+          const tx = await storeOnChain({
+            ipfsHash: entry.cid,
+            title: titlePlain,
+            timestamp: Math.floor(entry.ts/1000)
+          });
+          entry.tx = tx;
+        } catch (chainErr){
+          console.warn('On-chain store failed:', chainErr);
+          toast('Pinned; on-chain store failed (see console)', 'error');
+        }
+      }
+      persistEntries();
+      renderList();
+      toast('Pinned to IPFS', 'success');
+    }catch(err){
+      console.error(err); toast('Pin failed (see console)', 'error');
+      pinBtn.disabled=false; pinBtn.textContent='Pin to IPFS';
+    }
+  };
+
+  return card;
+}
+
+function renderList(){
+  const container = els.entries;
+  container.innerHTML='';
+  const list = state.entries.slice().sort((a,b)=>b.ts-a.ts);
+  for(const e of list){
+    const card = entryCard(e);
+    container.appendChild(card);
+  }
+  if(!list.length){
+    const empty = document.createElement('div');
+    empty.className='text-sm text-zinc-500';
+    empty.textContent='No entries yet.';
+    container.appendChild(empty);
+  }
+}
+
+function refreshFiltersUI(){
+  // categories
+  const catSel = els.filterCategory;
+  const cur = catSel.value;
+  catSel.innerHTML='<option value="">All categories</option>' + Array.from(state.categoriesSet).sort().map(c=>`<option>${c}</option>`).join('');
+  if(Array.from(state.categoriesSet).includes(cur)) catSel.value=cur;
+
+  // tags
+  const tagSel = els.filterTag;
+  const curt = tagSel.value;
+  tagSel.innerHTML='<option value="">All tags</option>' + Array.from(state.tagsSet).sort().map(t=>`<option>${t}</option>`).join('');
+  if(Array.from(state.tagsSet).includes(curt)) tagSel.value=curt;
+}
+
+/* ========================= ACTIONS =========================== */
+async function unlock(){
+  const p = els.pass.value.trim();
+  if(!p){ toast('Enter a passphrase'); return; }
+  await deriveKey(p, crypto.getRandomValues(new Uint8Array(16)));
+  state.passphrase = p; setLockedUI(false); toast('Unlocked', 'success');
+}
+function lock(){ state.passphrase=null; setLockedUI(true); toast('Locked'); }
+
+async function saveEntry({pin=false}={}){
+  if(!state.passphrase){ toast('Unlock first'); return; }
+  const title = (els.title.value||'').trim();
+  const text = (els.body.value||'').trim();
+  const category = (els.category.value||'').trim();
+  if(!title && !text){ toast('Write something first'); return; }
+
+  const encTitle = await encryptString(title||'(untitled)', state.passphrase);
+  const encBody  = await encryptString(text||'', state.passphrase);
+  const encCat   = await encryptString(category||'', state.passphrase);
+  const encTags  = await encryptString(JSON.stringify(currentTags), state.passphrase);
+
+  const entry = { id: crypto.randomUUID(), ts: Date.now(), title:encTitle, body:encBody, category:encCat, tags:encTags, cid:null, tx:null };
+  state.entries.push(entry); persistEntries();
+
+  els.title.value=''; els.body.value=''; els.category.value=''; currentTags=[]; renderTags();
+  renderList(); toast('Saved locally', 'success');
+
+  if(pin){
+    try{
+      const payload = { ts: entry.ts, title: encTitle, body: encBody, category: encCat, tags: encTags, version: 3 };
+      const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payload);
+      entry.cid = res.cid || res.IpfsHash || res.hash;
+      if(els.chainToggle.checked && state.isConnected){
+        try {
+          const titlePlain = title || 'Untitled';
+          const tx = await storeOnChain({
+            ipfsHash: entry.cid,
+            title: titlePlain,
+            timestamp: Math.floor(entry.ts/1000)
+          });
+          entry.tx = tx;
+        } catch (chainErr){
+          console.warn('On-chain store failed:', chainErr);
+          toast('Pinned; on-chain store failed (see console)', 'error');
+        }
+      }
+      persistEntries(); renderList(); toast('Pinned to IPFS', 'success');
+    }catch(e){
+      console.error(e); toast('Pinned failed (local save succeeded)', 'error');
+    }
+  }
+}
+
+/* ===================== EXPORT / IMPORT ======================== */
+function exportAll(){
+  const data = { version:3, exportedAt:new Date().toISOString(), entries: state.entries };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `life-examined-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function importAll(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(!data || !Array.isArray(data.entries)) throw new Error('Invalid file');
+      const map = new Map(state.entries.map(e=>[e.id,e]));
+      for(const e of data.entries){ map.set(e.id,e); }
+      state.entries = Array.from(map.values());
+      persistEntries(); renderList(); toast('Import complete','success');
+    }catch(e){ console.error(e); toast('Import failed','error'); }
+  };
+  reader.readAsText(file);
+}
+
+/* ========================= EVENTS ============================ */
+els.unlock.onclick = unlock;
+els.lock.onclick = lock;
+els.saveLocal.onclick = ()=>saveEntry({pin:false});
+els.saveIpfs.onclick  = ()=>saveEntry({pin:true});
+els.export.onclick = exportAll;
+els.import.onchange = e=>{ if(e.target.files?.[0]) importAll(e.target.files[0]); };
+els.clear.onclick = ()=>{
+  if(confirm('Delete all locally stored encrypted entries?')){
+    state.entries=[]; persistEntries(); renderList(); toast('Cleared');
+  }
+};
+els.search.oninput = renderList;
+els.filterCategory.onchange = renderList;
+els.filterTag.onchange = renderList;
+
+els.connectBtn.onclick = connectWallet;
+
+// handle account/network changes
+if(window.ethereum){
+  window.ethereum.on?.('accountsChanged', ()=>{
+    state.isConnected=false; els.chainText.textContent='Wallet: account changed'; els.chainDot.classList.add('bg-zinc-400');
+  });
+  window.ethereum.on?.('chainChanged', ()=>{
+    state.isConnected=false; els.chainText.textContent='Wallet: chain changed'; els.chainDot.classList.add('bg-zinc-400');
+  });
+}
+
+/* =========================== INIT ============================ */
+(function init(){
+  renderTags();
+  loadEntries();
+  renderList();
+  checkWorker();
+  setLockedUI(true);
+})();
+</script>
 </body>
 </html>
