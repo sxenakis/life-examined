@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Life Examined — Hybrid (Worker + MetaMask + Encrypted)</title>
+  <title>Life Examined — MetaMask Native Encryption (v4)</title>
   <meta name="color-scheme" content="light dark">
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Web3 (for optional Polygon on-chain logging) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"
-          integrity="sha512-iQfH2QkF5f2Z0cH2v5eQzYk0sXwT6n1hUuQK3oO0PcsZ8dXv5U2x4cV4X8bq1G1vQ2z4rT9Q6O3o5l2K5qkQ/A=="
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- tweetnacl for MetaMask-compatible public-key encryption -->
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js" crossorigin="anonymous"></script>
   <link rel="icon" href="data:,">
   <style>
     :root { --ring: #6366f1; }
@@ -18,8 +19,6 @@
     .wrap-anywhere{overflow-wrap:anywhere}
     .chip{display:inline-flex;align-items:center;gap:.4rem;padding:.2rem .6rem;border-radius:9999px;background:rgba(99,102,241,.12);font-size:.75rem}
     .chip button{all:unset;cursor:pointer;font-weight:700;opacity:.7}
-    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-         border:1px solid rgba(128,128,128,.35);border-bottom-width:2px;border-radius:.375rem;padding:.1rem .35rem;font-size:.75rem}
     .ring:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
     .btn{padding:.625rem .9rem;border-radius:.6rem}
     .btn-primary{background:#111827;color:#fff}
@@ -35,7 +34,6 @@
     .card{border:1px solid rgba(120,120,120,.18);border-radius:1rem;background:#fff}
     .toast{position:fixed;right:1rem;bottom:1rem;padding:.6rem .8rem;border-radius:.6rem;color:#fff;z-index:1000;opacity:.98}
     .toast-info{background:#3b82f6}.toast-err{background:#ef4444}.toast-ok{background:#10b981}
-    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:1rem;z-index:50}
     @media (prefers-color-scheme: dark){
       body{background:#0b0b0f;color:#e5e7eb}
       .card{background:#0f1115;border-color:#222}
@@ -48,8 +46,8 @@
   <div class="max-w-7xl mx-auto p-4 sm:p-6">
     <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold">Life Examined — Hybrid</h1>
-        <p class="text-sm text-zinc-500">End-to-end encrypted journal with optional Polygon logging & IPFS via Worker.</p>
+        <h1 class="text-2xl font-bold">Life Examined — MetaMask Native</h1>
+        <p class="text-sm text-zinc-500">E2E journal using MetaMask <code>eth_getEncryptionPublicKey</code>/<code>eth_decrypt</code>. IPFS via Worker; optional Polygon logging.</p>
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
@@ -60,20 +58,32 @@
           <span id="chainDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
           <span id="chainText">Wallet: not connected</span>
         </span>
+        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
+          <span id="encDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
+          <span id="encText">Enc: passphrase</span>
+        </span>
         <button id="connectBtn" class="btn btn-ghost text-sm">Connect MetaMask</button>
-        <button id="lockBtn" class="btn btn-primary text-sm">Lock</button>
+        <label class="flex items-center gap-2 text-xs">
+          <input id="mmToggle" type="checkbox" class="accent-indigo-600">
+          Use MetaMask encryption (recommended)
+        </label>
+        <button id="lockBtn" class="btn btn-primary text-sm">Lock (passphrase)</button>
       </div>
     </header>
 
-    <!-- Passphrase -->
+    <!-- Passphrase (legacy / migration) -->
     <section class="mt-4">
       <div class="card p-4">
-        <label for="passphrase" class="block text-sm font-medium">Passphrase</label>
+        <label for="passphrase" class="block text-sm font-medium">Legacy passphrase (for migration or fallback)</label>
         <div class="mt-2 flex gap-2">
-          <input id="passphrase" type="password" class="w-full ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Enter a strong passphrase (don't lose it)" />
+          <input id="passphrase" type="password" class="w-full ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Enter passphrase if you have old entries" />
           <button id="unlockBtn" class="btn btn-indigo">Unlock</button>
         </div>
-        <p class="text-xs text-zinc-500 mt-2">Passphrase never leaves this device. We use AES‑GCM 256 with PBKDF2 (150k iterations). Only ciphertext is stored or uploaded.</p>
+        <p class="text-xs text-zinc-500 mt-2">Passphrase never leaves this device. AES-GCM 256 with PBKDF2 (150k iters). Only used for <em>pass-v1</em> entries or if MetaMask is disabled.</p>
+        <div class="mt-2">
+          <button id="migrateAllBtn" class="btn btn-ghost text-sm">Re-encrypt all pass-v1 entries with MetaMask</button>
+          <span class="text-xs text-zinc-500">Connect wallet + unlock passphrase first.</span>
+        </div>
       </div>
     </section>
 
@@ -86,7 +96,7 @@
             <span id="encBadge" class="badge badge-red">🔒 Locked</span>
             <label class="flex items-center gap-2 text-xs">
               <input id="chainToggle" type="checkbox" class="accent-indigo-600">
-              Also write to Polygon (on‑chain hash only)
+              Also write to Polygon (on-chain hash only)
             </label>
           </div>
         </div>
@@ -102,7 +112,8 @@
           <div class="flex flex-wrap items-center gap-3">
             <button id="saveLocalBtn" class="btn btn-primary">Save locally</button>
             <button id="saveIpfsBtn" class="btn btn-indigo">Save + Pin to IPFS</button>
-            <span class="text-xs text-zinc-500">Local save keeps the encrypted entry in your browser. Pinning stores an encrypted copy on IPFS via your Worker. If the Polygon toggle is on and you’re connected, the IPFS hash is also recorded on‑chain.</span>
+            <button id="selfCheckBtn" class="btn btn-ghost">Run self-check</button>
+            <span class="text-xs text-zinc-500">Local save keeps the encrypted entry in your browser. Pinning stores an encrypted copy on IPFS via your Worker. If the Polygon toggle is on and you’re connected, the IPFS hash is also recorded on-chain.</span>
           </div>
         </div>
       </div>
@@ -137,15 +148,10 @@
 
 <script>
 /* =========================== CONFIG =========================== */
-const WORKER_URL = "https://life-examined-worker.sjx-feb.workers.dev"; // update if needed
-// Polygon mainnet chainId 0x89. Change to Mumbai if you prefer testnet.
-const POLYGON_CHAIN_ID = "0x89";
-
-// Your existing contract (from earlier code).
-// NOTE: Storing a plaintext title on-chain can leak metadata.
-// We'll default to storing a placeholder title. Change CHAIN_TITLE_MODE to 'plaintext' or 'encrypted' if you want otherwise.
+const WORKER_URL = "https://life-examined-worker.sjx-feb.workers.dev"; // unchanged
+const POLYGON_CHAIN_ID = "0x89"; // Polygon mainnet
 const CONTRACT_ADDRESS = "0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A";
-const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted'
+const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted' (encrypted uses passphrase path only)
 
 const CONTRACT_ABI = [
   {
@@ -171,7 +177,7 @@ const CONTRACT_ABI = [
           {"internalType":"address","name":"author","type":"address"}
         ],
         "internalType":"struct LifeExamined.Entry[]",
-        "name":"",
+        "name":[],
         "type":"tuple[]"
       }
     ],
@@ -193,18 +199,18 @@ document.getElementById('contractAddr').textContent = CONTRACT_ADDRESS;
 /* ============================ STATE =========================== */
 const state = {
   passphrase: null,
-  entries: [], // encrypted entries
+  entries: [],
   tagsSet: new Set(),
   categoriesSet: new Set(),
-
-  // chain state
   web3: null,
   isConnected: false,
   wallet: "",
-  contract: null
+  contract: null,
+  mmPubKey: null,
+  useMetaMask: false
 };
 
-const STORAGE_KEY = "le.entries.v3";
+const STORAGE_KEY = "le.entries.v4";
 
 /* ===================== DOM REFERENCES ======================== */
 const els = {
@@ -219,6 +225,7 @@ const els = {
   body: document.getElementById('body'),
   saveLocal: document.getElementById('saveLocalBtn'),
   saveIpfs: document.getElementById('saveIpfsBtn'),
+  selfCheck: document.getElementById('selfCheckBtn'),
   entries: document.getElementById('entries'),
   export: document.getElementById('exportBtn'),
   import: document.getElementById('importFile'),
@@ -230,16 +237,21 @@ const els = {
   workerText: document.getElementById('workerText'),
   chainDot: document.getElementById('chainDot'),
   chainText: document.getElementById('chainText'),
+  encDot: document.getElementById('encDot'),
+  encText: document.getElementById('encText'),
   connectBtn: document.getElementById('connectBtn'),
   chainToggle: document.getElementById('chainToggle'),
+  mmToggle: document.getElementById('mmToggle'),
+  migrateAllBtn: document.getElementById('migrateAllBtn')
 };
 
-/* ===================== UTILITIES (Crypto) ===================== */
+/* ===================== UTILITIES ===================== */
 const te = new TextEncoder();
 const td = new TextDecoder();
 function b64e(bytes){ return btoa(String.fromCharCode(...new Uint8Array(bytes))); }
 function b64d(str){ return Uint8Array.from(atob(str), c=>c.charCodeAt(0)); }
 
+/* ===== Legacy AES-GCM (pass-v1) ===== */
 async function deriveKey(passphrase, saltBytes) {
   const baseKey = await crypto.subtle.importKey('raw', te.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
@@ -250,20 +262,44 @@ async function deriveKey(passphrase, saltBytes) {
     ['encrypt','decrypt']
   );
 }
-async function encryptString(plaintext, passphrase) {
+async function encryptStringPass(plaintext, passphrase) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv   = crypto.getRandomValues(new Uint8Array(12));
   const key  = await deriveKey(passphrase, salt);
   const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, te.encode(plaintext));
   return { salt: b64e(salt), iv: b64e(iv), ciphertext: b64e(ct) };
 }
-async function decryptString(bundle, passphrase) {
+async function decryptStringPass(bundle, passphrase) {
   const salt = b64d(bundle.salt);
   const iv   = b64d(bundle.iv);
   const ct   = b64d(bundle.ciphertext);
   const key  = await deriveKey(passphrase, salt);
   const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
   return td.decode(pt);
+}
+
+/* ===== MetaMask-native (metamask-v1) ===== */
+async function getMMEncryptionPublicKey(address){
+  return await window.ethereum.request({ method:'eth_getEncryptionPublicKey', params:[address] });
+}
+function encryptWithMetaMask(plaintext, pubKeyB64){
+  if(!window.nacl) throw new Error('tweetnacl not loaded');
+  const pubKey = b64d(pubKeyB64);
+  const ephem = window.nacl.box.keyPair();
+  const nonce = window.nacl.randomBytes(24);
+  const message = te.encode(plaintext);
+  const box = window.nacl.box(message, nonce, pubKey, ephem.secretKey);
+  return {
+    version: 'x25519-xsalsa20-poly1305',
+    nonce: b64e(nonce),
+    ephemPublicKey: b64e(ephem.publicKey),
+    ciphertext: b64e(box)
+  };
+}
+async function decryptWithMetaMask(cipherObj){
+  const data = JSON.stringify(cipherObj);
+  const plaintext = await window.ethereum.request({ method:'eth_decrypt', params:[data, state.wallet] });
+  return plaintext;
 }
 
 /* =========================== TOAST =========================== */
@@ -311,7 +347,18 @@ els.tagInput.addEventListener('blur', ()=>{
 function loadEntries(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    state.entries = raw ? JSON.parse(raw) : [];
+    if(raw){
+      state.entries = JSON.parse(raw);
+    }else{
+      const old = localStorage.getItem("le.entries.v3");
+      if(old){
+        const v3 = JSON.parse(old);
+        state.entries = (v3||[]).map(e=>({ ...e, enc: 'pass-v1' }));
+        persistEntries();
+      }else{
+        state.entries = [];
+      }
+    }
   }catch{ state.entries=[]; }
 }
 function persistEntries(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries)); }
@@ -343,26 +390,20 @@ async function pinJsonToIpfs(name, jsonObj){
     credentials:'omit',
   });
   if(!res.ok){
-    const t = await res.text().catch(()=>'');
-    throw new Error(`Pin failed ${res.status}: ${t}`);
+    const t = await res.text().catch(()=>''); throw new Error(`Pin failed ${res.status}: ${t}`);
   }
-  return res.json(); // { cid } or { IpfsHash }
+  return res.json();
 }
 
 /* ===================== WALLET / POLYGON ====================== */
 async function connectWallet(){
   if(!window.ethereum){ toast('MetaMask not detected', 'error'); return; }
   try{
-    // request accounts
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    // switch to Polygon if needed
     const chainId = await window.ethereum.request({ method: 'eth_chainId' });
     if(chainId !== POLYGON_CHAIN_ID){
       try{
-        await window.ethereum.request({
-          method:'wallet_switchEthereumChain',
-          params:[{ chainId: POLYGON_CHAIN_ID }]
-        });
+        await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID }] });
       }catch(err){
         if(err && err.code === 4902){
           await window.ethereum.request({
@@ -386,6 +427,16 @@ async function connectWallet(){
     els.chainDot.classList.add('bg-emerald-500');
     els.chainText.textContent = `Wallet: ${state.wallet.slice(0,6)}…${state.wallet.slice(-4)}`;
     toast('Wallet connected', 'success');
+
+    try{
+      state.mmPubKey = await getMMEncryptionPublicKey(state.wallet);
+      els.encDot.classList.add('bg-emerald-500');
+      els.encText.textContent = 'Enc: MetaMask available';
+      if(els.mmToggle.checked){ state.useMetaMask = true; updateEncModeUI(); }
+    }catch(pubErr){
+      console.warn('Could not get encryption public key:', pubErr);
+      toast('This wallet does not support encryption API', 'error');
+    }
   }catch(e){
     console.error(e);
     els.chainDot.classList.remove('bg-emerald-500');
@@ -399,24 +450,21 @@ async function storeOnChain({ ipfsHash, title, timestamp }){
   if(!state.isConnected || !state.contract || !state.wallet){
     throw new Error('Wallet not connected');
   }
-  // Respect privacy mode for title
   let titleToSend = "Encrypted Entry";
   if(CHAIN_TITLE_MODE === "plaintext"){
     titleToSend = title || "Untitled";
   }else if(CHAIN_TITLE_MODE === "encrypted"){
-    // tiny encrypted title (with same passphrase) to avoid plaintext on-chain
-    if(!state.passphrase) throw new Error('Unlock first to encrypt on-chain title');
-    const enc = await encryptString(title || "Untitled", state.passphrase);
-    titleToSend = JSON.stringify(enc); // warning: storing JSON string increases gas
+    if(!state.passphrase) throw new Error('Unlock passphrase to encrypt on-chain title');
+    const enc = await encryptStringPass(title || "Untitled", state.passphrase);
+    titleToSend = JSON.stringify(enc);
   }
 
-  // estimate gas
   let gasEstimate;
   try{
     gasEstimate = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
       .estimateGas({ from: state.wallet });
   }catch{
-    gasEstimate = 300000; // fallback
+    gasEstimate = 300000;
   }
 
   const tx = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
@@ -424,11 +472,20 @@ async function storeOnChain({ ipfsHash, title, timestamp }){
   return tx.transactionHash;
 }
 
-/* ============================ UI ============================= */
+/* ======================= ENC MODE UI ======================== */
 function setLockedUI(locked){
   if(locked){ els.encBadge.textContent='🔒 Locked'; els.encBadge.className='badge badge-red'; }
   else{ els.encBadge.textContent='🔓 Unlocked'; els.encBadge.className='badge badge-green'; }
 }
+function updateEncModeUI(){
+  if(state.useMetaMask){
+    els.encText.textContent = state.mmPubKey ? 'Enc: MetaMask (metamask-v1)' : 'Enc: MetaMask unavailable';
+  }else{
+    els.encText.textContent = state.passphrase ? 'Enc: passphrase (pass-v1)' : 'Enc: passphrase (locked)';
+  }
+}
+
+/* ============================ UI ============================= */
 function entryCard(entry){
   const card = document.createElement('div');
   card.className = 'card p-4 space-y-2';
@@ -438,7 +495,8 @@ function entryCard(entry){
 
   const left = document.createElement('div');
   left.innerHTML = `<div class="text-xs text-zinc-500">${new Date(entry.ts).toLocaleString()}</div>
-                    <div class="text-lg font-medium wrap-anywhere" id="t_${entry.id}">[encrypted title]</div>`;
+                    <div class="text-lg font-medium wrap-anywhere" id="t_${entry.id}">[encrypted title]</div>
+                    <div class="text-[10px] text-zinc-500">enc=${entry.enc}</div>`;
 
   const right = document.createElement('div');
   right.className='flex gap-2 flex-wrap';
@@ -450,7 +508,12 @@ function entryCard(entry){
   pinBtn.className='btn btn-indigo text-sm'; pinBtn.textContent = entry.cid ? 'Pinned ✓' : 'Pin to IPFS';
   pinBtn.disabled = !!entry.cid;
 
-  right.appendChild(decBtn); right.appendChild(pinBtn);
+  const migBtn = document.createElement('button');
+  migBtn.className='btn btn-ghost text-sm';
+  migBtn.textContent='Migrate → MetaMask';
+  migBtn.style.display = (entry.enc === 'pass-v1') ? 'inline-flex' : 'none';
+
+  right.appendChild(decBtn); right.appendChild(pinBtn); right.appendChild(migBtn);
   head.appendChild(left); head.appendChild(right);
 
   const body = document.createElement('div');
@@ -482,25 +545,40 @@ function entryCard(entry){
   card.appendChild(head); card.appendChild(body); card.appendChild(meta); card.appendChild(linkWrap);
 
   decBtn.onclick = async () => {
-    if(!state.passphrase){ toast('Unlock with your passphrase first.'); return; }
     try{
-      const title = await decryptString(entry.title, state.passphrase);
-      const text  = await decryptString(entry.body, state.passphrase);
-      let category = '', tags=[];
-      try{ category = await decryptString(entry.category, state.passphrase);}catch{}
-      try{ const t = await decryptString(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
-
-      left.querySelector(`#t_${entry.id}`).textContent = title || '(untitled)';
-      body.textContent = text || '(empty)';
-      catSpan.textContent = 'Category: ' + (category||'—');
-      tagsSpan.textContent = 'Tags: ' + (Array.isArray(tags)&&tags.length? '#'+tags.join(' #') : '—');
-
-      if(category) state.categoriesSet.add(category);
-      if(tags && tags.length){ for(const t of tags) state.tagsSet.add(t); }
-      refreshFiltersUI();
-      decBtn.textContent='Decrypted'; decBtn.disabled=true;
+      if(entry.enc === 'metamask-v1'){
+        if(!state.isConnected || !state.wallet) { toast('Connect MetaMask first'); return; }
+        const title = await decryptWithMetaMask(entry.title);
+        const text  = await decryptWithMetaMask(entry.body);
+        let category = '', tags=[];
+        try{ category = await decryptWithMetaMask(entry.category); }catch{}
+        try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{}
+        left.querySelector(`#t_${entry.id}`).textContent = title || '(untitled)';
+        body.textContent = text || '(empty)';
+        catSpan.textContent = 'Category: ' + (category||'—');
+        tagsSpan.textContent = 'Tags: ' + (Array.isArray(tags)&&tags.length? '#'+tags.join(' #') : '—');
+        if(category) state.categoriesSet.add(category);
+        if(tags && tags.length){ for(const t of tags) state.tagsSet.add(t); }
+        refreshFiltersUI();
+        decBtn.textContent='Decrypted'; decBtn.disabled=true;
+      }else{
+        if(!state.passphrase){ toast('Unlock passphrase first.'); return; }
+        const title = await decryptStringPass(entry.title, state.passphrase);
+        const text  = await decryptStringPass(entry.body, state.passphrase);
+        let category = '', tags=[];
+        try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{}
+        try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
+        left.querySelector(`#t_${entry.id}`).textContent = title || '(untitled)';
+        body.textContent = text || '(empty)';
+        catSpan.textContent = 'Category: ' + (category||'—');
+        tagsSpan.textContent = 'Tags: ' + (Array.isArray(tags)&&tags.length? '#'+tags.join(' #') : '—');
+        if(category) state.categoriesSet.add(category);
+        if(tags && tags.length){ for(const t of tags) state.tagsSet.add(t); }
+        refreshFiltersUI();
+        decBtn.textContent='Decrypted'; decBtn.disabled=true;
+      }
     }catch(e){
-      console.error(e); toast('Decryption failed — wrong passphrase?', 'error');
+      console.error(e); toast('Decryption failed', 'error');
     }
   };
 
@@ -509,18 +587,21 @@ function entryCard(entry){
     try{
       const payload = {
         ts: entry.ts,
+        enc: entry.enc,
         title: entry.title,
         body: entry.body,
         category: entry.category,
         tags: entry.tags,
-        version: 3
+        version: 4
       };
       const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payload);
       entry.cid = res.cid || res.IpfsHash || res.hash;
-      // Optional on-chain
       if(els.chainToggle.checked && state.isConnected){
         try {
-          const titlePlain = state.passphrase ? await decryptString(entry.title, state.passphrase) : 'Untitled';
+          let titlePlain = 'Untitled';
+          if(entry.enc === 'pass-v1' && state.passphrase){
+            try{ titlePlain = await decryptStringPass(entry.title, state.passphrase) || 'Untitled'; }catch{}
+          }
           const tx = await storeOnChain({
             ipfsHash: entry.cid,
             title: titlePlain,
@@ -538,6 +619,26 @@ function entryCard(entry){
     }catch(err){
       console.error(err); toast('Pin failed (see console)', 'error');
       pinBtn.disabled=false; pinBtn.textContent='Pin to IPFS';
+    }
+  };
+
+  migBtn.onclick = async () => {
+    try{
+      if(entry.enc !== 'pass-v1'){ toast('Already MetaMask'); return; }
+      if(!state.mmPubKey){ toast('Connect wallet to get encryption key first'); return; }
+      if(!state.passphrase){ toast('Unlock passphrase first'); return; }
+      const title = await decryptStringPass(entry.title, state.passphrase);
+      const text  = await decryptStringPass(entry.body, state.passphrase);
+      let category = ''; try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{}
+      let tags = []; try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
+      entry.title = encryptWithMetaMask(title || '(untitled)', state.mmPubKey);
+      entry.body  = encryptWithMetaMask(text || '', state.mmPubKey);
+      entry.category = encryptWithMetaMask(category || '', state.mmPubKey);
+      entry.tags = encryptWithMetaMask(JSON.stringify(tags||[]), state.mmPubKey);
+      entry.enc = 'metamask-v1';
+      persistEntries(); renderList(); toast('Entry migrated to MetaMask', 'success');
+    }catch(e){
+      console.error(e); toast('Migration failed', 'error');
     }
   };
 
@@ -561,13 +662,11 @@ function renderList(){
 }
 
 function refreshFiltersUI(){
-  // categories
   const catSel = els.filterCategory;
   const cur = catSel.value;
   catSel.innerHTML='<option value="">All categories</option>' + Array.from(state.categoriesSet).sort().map(c=>`<option>${c}</option>`).join('');
   if(Array.from(state.categoriesSet).includes(cur)) catSel.value=cur;
 
-  // tags
   const tagSel = els.filterTag;
   const curt = tagSel.value;
   tagSel.innerHTML='<option value="">All tags</option>' + Array.from(state.tagsSet).sort().map(t=>`<option>${t}</option>`).join('');
@@ -579,23 +678,35 @@ async function unlock(){
   const p = els.pass.value.trim();
   if(!p){ toast('Enter a passphrase'); return; }
   await deriveKey(p, crypto.getRandomValues(new Uint8Array(16)));
-  state.passphrase = p; setLockedUI(false); toast('Unlocked', 'success');
+  state.passphrase = p; setLockedUI(false); updateEncModeUI(); toast('Passphrase unlocked', 'success');
 }
-function lock(){ state.passphrase=null; setLockedUI(true); toast('Locked'); }
+function lock(){ state.passphrase=null; setLockedUI(true); updateEncModeUI(); toast('Locked'); }
 
 async function saveEntry({pin=false}={}){
-  if(!state.passphrase){ toast('Unlock first'); return; }
+  let encMode = null;
+  if(state.useMetaMask && state.mmPubKey){ encMode = 'metamask-v1'; }
+  else if(state.passphrase){ encMode = 'pass-v1'; }
+  else { toast('Connect wallet (MM encryption) or unlock passphrase first'); return; }
+
   const title = (els.title.value||'').trim();
   const text = (els.body.value||'').trim();
   const category = (els.category.value||'').trim();
   if(!title && !text){ toast('Write something first'); return; }
 
-  const encTitle = await encryptString(title||'(untitled)', state.passphrase);
-  const encBody  = await encryptString(text||'', state.passphrase);
-  const encCat   = await encryptString(category||'', state.passphrase);
-  const encTags  = await encryptString(JSON.stringify(currentTags), state.passphrase);
+  let encTitle, encBody, encCat, encTags;
+  if(encMode === 'metamask-v1'){
+    encTitle = encryptWithMetaMask(title||'(untitled)', state.mmPubKey);
+    encBody  = encryptWithMetaMask(text||'', state.mmPubKey);
+    encCat   = encryptWithMetaMask(category||'', state.mmPubKey);
+    encTags  = encryptWithMetaMask(JSON.stringify(currentTags), state.mmPubKey);
+  }else{
+    encTitle = await encryptStringPass(title||'(untitled)', state.passphrase);
+    encBody  = await encryptStringPass(text||'', state.passphrase);
+    encCat   = await encryptStringPass(category||'', state.passphrase);
+    encTags  = await encryptStringPass(JSON.stringify(currentTags), state.passphrase);
+  }
 
-  const entry = { id: crypto.randomUUID(), ts: Date.now(), title:encTitle, body:encBody, category:encCat, tags:encTags, cid:null, tx:null };
+  const entry = { id: crypto.randomUUID(), ts: Date.now(), enc: encMode, title:encTitle, body:encBody, category:encCat, tags:encTags, cid:null, tx:null };
   state.entries.push(entry); persistEntries();
 
   els.title.value=''; els.body.value=''; els.category.value=''; currentTags=[]; renderTags();
@@ -603,7 +714,7 @@ async function saveEntry({pin=false}={}){
 
   if(pin){
     try{
-      const payload = { ts: entry.ts, title: encTitle, body: encBody, category: encCat, tags: encTags, version: 3 };
+      const payload = { ts: entry.ts, enc: entry.enc, title: encTitle, body: encBody, category: encCat, tags: encTags, version: 4 };
       const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payload);
       entry.cid = res.cid || res.IpfsHash || res.hash;
       if(els.chainToggle.checked && state.isConnected){
@@ -627,9 +738,34 @@ async function saveEntry({pin=false}={}){
   }
 }
 
+async function migrateAll(){
+  if(!state.entries.length){ toast('No entries to migrate'); return; }
+  if(!state.mmPubKey){ toast('Connect wallet first'); return; }
+  if(!state.passphrase){ toast('Unlock passphrase first'); return; }
+  let count = 0;
+  for(const entry of state.entries){
+    if(entry.enc !== 'pass-v1') continue;
+    try{
+      const title = await decryptStringPass(entry.title, state.passphrase);
+      const text  = await decryptStringPass(entry.body, state.passphrase);
+      let category = ''; try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{}
+      let tags = []; try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
+      entry.title = encryptWithMetaMask(title || '(untitled)', state.mmPubKey);
+      entry.body  = encryptWithMetaMask(text || '', state.mmPubKey);
+      entry.category = encryptWithMetaMask(category || '', state.mmPubKey);
+      entry.tags = encryptWithMetaMask(JSON.stringify(tags||[]), state.mmPubKey);
+      entry.enc = 'metamask-v1';
+      count++;
+    }catch(e){
+      console.warn('Failed to migrate an entry:', e);
+    }
+  }
+  persistEntries(); renderList(); toast(`Migrated ${count} entr${count===1?'y':'ies'} to MetaMask`, 'success');
+}
+
 /* ===================== EXPORT / IMPORT ======================== */
 function exportAll(){
-  const data = { version:3, exportedAt:new Date().toISOString(), entries: state.entries };
+  const data = { version:4, exportedAt:new Date().toISOString(), entries: state.entries };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -641,9 +777,17 @@ function importAll(file){
   reader.onload = ()=>{
     try{
       const data = JSON.parse(reader.result);
-      if(!data || !Array.isArray(data.entries)) throw new Error('Invalid file');
+      let entries = [];
+      if(Array.isArray(data.entries)){
+        entries = data.entries;
+      }else if(Array.isArray(data)){
+        entries = data;
+      }else{
+        throw new Error('Invalid file');
+      }
+      entries = entries.map(e => e.enc ? e : ({...e, enc:'pass-v1'}));
       const map = new Map(state.entries.map(e=>[e.id,e]));
-      for(const e of data.entries){ map.set(e.id,e); }
+      for(const e of entries){ map.set(e.id,e); }
       state.entries = Array.from(map.values());
       persistEntries(); renderList(); toast('Import complete','success');
     }catch(e){ console.error(e); toast('Import failed','error'); }
@@ -656,6 +800,15 @@ els.unlock.onclick = unlock;
 els.lock.onclick = lock;
 els.saveLocal.onclick = ()=>saveEntry({pin:false});
 els.saveIpfs.onclick  = ()=>saveEntry({pin:true});
+els.selfCheck.onclick = async ()=>{
+  try{
+    if(!state.mmPubKey || !state.wallet){ toast('Connect wallet first'); return; }
+    const sample = `self-check ${new Date().toISOString()}`;
+    const cipher = encryptWithMetaMask(sample, state.mmPubKey);
+    const plain  = await decryptWithMetaMask(cipher);
+    if(plain === sample){ toast('Self-check: OK','success'); } else { throw new Error('Mismatch'); }
+  }catch(e){ console.error(e); toast('Self-check failed','error'); }
+};
 els.export.onclick = exportAll;
 els.import.onchange = e=>{ if(e.target.files?.[0]) importAll(e.target.files[0]); };
 els.clear.onclick = ()=>{
@@ -666,26 +819,34 @@ els.clear.onclick = ()=>{
 els.search.oninput = renderList;
 els.filterCategory.onchange = renderList;
 els.filterTag.onchange = renderList;
-
 els.connectBtn.onclick = connectWallet;
+els.mmToggle.onchange = (e)=>{
+  state.useMetaMask = !!e.target.checked;
+  if(state.useMetaMask && !state.mmPubKey){
+    toast('Connect wallet to use MetaMask encryption','error');
+    e.target.checked = false; state.useMetaMask = false;
+  }
+  updateEncModeUI();
+};
+els.migrateAllBtn.onclick = migrateAll;
 
-// handle account/network changes
 if(window.ethereum){
-  window.ethereum.on?.('accountsChanged', ()=>{
+  window.ethereum.on?.('accountsChanged', async ()=>{
     state.isConnected=false; els.chainText.textContent='Wallet: account changed'; els.chainDot.classList.add('bg-zinc-400');
+    state.mmPubKey = null; updateEncModeUI();
   });
   window.ethereum.on?.('chainChanged', ()=>{
     state.isConnected=false; els.chainText.textContent='Wallet: chain changed'; els.chainDot.classList.add('bg-zinc-400');
   });
 }
 
-/* =========================== INIT ============================ */
 (function init(){
   renderTags();
   loadEntries();
   renderList();
   checkWorker();
   setLockedUI(true);
+  updateEncModeUI();
 })();
 </script>
 </body>
