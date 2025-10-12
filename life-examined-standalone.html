@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Life Examined — MetaMask Native Encryption (v5, single-prompt)</title>
+  <title>Life Examined — MetaMask Native Encryption (v5.1 single‑prompt)</title>
   <meta name="color-scheme" content="light dark">
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Web3 (for optional Polygon on-chain logging) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"
-          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <!-- tweetnacl for MetaMask-compatible public-key encryption -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- MetaMask official encrypt helper (UMD) -->
+  <script src="https://unpkg.com/@metamask/eth-sig-util@7.0.1/dist/eth-sig-util.umd.js" crossorigin="anonymous"></script>
+  <!-- tweetnacl fallback (not used if eth-sig-util is present) -->
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js" crossorigin="anonymous"></script>
   <link rel="icon" href="data:,">
   <style>
@@ -71,7 +72,6 @@
       </div>
     </header>
 
-    <!-- Passphrase (legacy / migration) -->
     <section class="mt-4">
       <div class="card p-4">
         <label for="passphrase" class="block text-sm font-medium">Legacy passphrase (for migration or fallback)</label>
@@ -87,7 +87,6 @@
       </div>
     </section>
 
-    <!-- Composer -->
     <section class="mt-6">
       <div class="card p-4">
         <div class="flex items-center justify-between gap-3">
@@ -119,7 +118,6 @@
       </div>
     </section>
 
-    <!-- Filters + List -->
     <section class="mt-6">
       <div class="flex items-center justify-between gap-3">
         <h2 class="font-semibold">Entries</h2>
@@ -154,46 +152,12 @@
 const WORKER_URL = "https://life-examined-worker.sjx-feb.workers.dev"; // unchanged
 const POLYGON_CHAIN_ID = "0x89"; // Polygon mainnet
 const CONTRACT_ADDRESS = "0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A";
-const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted' (encrypted uses passphrase path only)
+const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted'
 
 const CONTRACT_ABI = [
-  {
-    "inputs":[
-      {"internalType":"string","name":"_ipfsHash","type":"string"},
-      {"internalType":"uint256","name":"_timestamp","type":"uint256"},
-      {"internalType":"string","name":"_title","type":"string"}
-    ],
-    "name":"storeEntry",
-    "outputs":[],
-    "stateMutability":"nonpayable",
-    "type":"function"
-  },
-  {
-    "inputs":[],
-    "name":"getMyEntries",
-    "outputs":[
-      {
-        "components":[
-          {"internalType":"string","name":"ipfsHash","type":"string"},
-          {"internalType":"uint256","name":"timestamp","type":"uint256"},
-          {"internalType":"string","name":"title","type":"string"},
-          {"internalType":"address","name":"author","type":"address"}
-        ],
-        "internalType":"struct LifeExamined.Entry[]",
-        "name":[],
-        "type":"tuple[]"
-      }
-    ],
-    "stateMutability":"view",
-    "type":"function"
-  },
-  {
-    "inputs":[],
-    "name":"totalEntries",
-    "outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
-    "stateMutability":"view",
-    "type":"function"
-  }
+  {"inputs":[{"internalType":"string","name":"_ipfsHash","type":"string"},{"internalType":"uint256","name":"_timestamp","type":"uint256"},{"internalType":"string","name":"_title","type":"string"}],"name":"storeEntry","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"getMyEntries","outputs":[{"components":[{"internalType":"string","name":"ipfsHash","type":"string"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"string","name":"title","type":"string"},{"internalType":"address","name":"author","type":"address"}],"internalType":"struct LifeExamined.Entry[]","name":[],"type":"tuple[]"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"totalEntries","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
 ];
 
 document.getElementById('workerUrl').textContent = WORKER_URL;
@@ -204,7 +168,7 @@ document.getElementById('contractAddr').textContent = CONTRACT_ADDRESS;
  *****************/
 const state = {
   passphrase: null,
-  entries: [], // entries are versioned; new ones are pass-v2 / metamask-v2 with single payload cipher
+  entries: [], // v5 single-cipher entries: pass-v2 | metamask-v2
   tagsSet: new Set(),
   categoriesSet: new Set(),
   web3: null,
@@ -215,7 +179,7 @@ const state = {
   useMetaMask: false
 };
 
-const STORAGE_KEY = "le.entries.v5"; // bump to v5 for single-prompt payload format
+const STORAGE_KEY = "le.entries.v5.1"; // bump to avoid parsing older shapes
 const MM_CACHE_KEY = 'le.mmPubKeyCache.v1';
 
 /*****************
@@ -292,39 +256,35 @@ async function decryptStringPass(bundle, passphrase) {
   const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
   return td.decode(pt);
 }
+async function encryptPayloadPass(payloadObj, passphrase){ return encryptStringPass(JSON.stringify(payloadObj), passphrase); }
+async function decryptPayloadPass(bundle, passphrase){ const s = await decryptStringPass(bundle, passphrase); return JSON.parse(s); }
 
 /*****************
- * PASS-V2 single-payload helpers
- *****************/
-async function encryptPayloadPass(payloadObj, passphrase){
-  return encryptStringPass(JSON.stringify(payloadObj), passphrase); // returns {salt,iv,ciphertext}
-}
-async function decryptPayloadPass(bundle, passphrase){
-  const s = await decryptStringPass(bundle, passphrase);
-  return JSON.parse(s);
-}
-
-/*****************
- * METAMASK (metamask-v1/2)
+ * METAMASK (metamask-v1/v2)
  *****************/
 async function getMMEncryptionPublicKey(address){
   return await window.ethereum.request({ method:'eth_getEncryptionPublicKey', params:[address] });
 }
 function encryptWithMetaMask(plaintext, pubKeyB64){
+  // Prefer official helper (ensures exact shape MetaMask expects)
+  if (window.ethSigUtil && window.ethSigUtil.encrypt){
+    return window.ethSigUtil.encrypt({ publicKey: pubKeyB64, data: plaintext, version: 'x25519-xsalsa20-poly1305' });
+  }
+  // Fallback to hand-rolled nacl (same shape)
   if(!window.nacl) throw new Error('tweetnacl not loaded');
-  const pubKey = b64d(pubKeyB64); // Uint8Array(32)
+  const pubKey = b64d(pubKeyB64);
   const ephem = window.nacl.box.keyPair();
   const nonce = window.nacl.randomBytes(24);
   const message = te.encode(plaintext);
   const box = window.nacl.box(message, nonce, pubKey, ephem.secretKey);
-  return {
-    version: 'x25519-xsalsa20-poly1305',
-    nonce: b64e(nonce),
-    ephemPublicKey: b64e(ephem.publicKey),
-    ciphertext: b64e(box)
-  };
+  return { version: 'x25519-xsalsa20-poly1305', nonce: b64e(nonce), ephemPublicKey: b64e(ephem.publicKey), ciphertext: b64e(box) };
 }
 async function decryptWithMetaMask(cipherObj){
+  // Guard: selected account in MetaMask must match the connected wallet
+  const selected = (await window.ethereum.request({ method:'eth_accounts' }))[0];
+  if(!selected || selected.toLowerCase() !== state.wallet.toLowerCase()){
+    throw new Error('Selected MetaMask account does not match connected wallet. Switch account to '+state.wallet+' and try again.');
+  }
   const data = JSON.stringify(cipherObj);
   const plaintext = await window.ethereum.request({ method:'eth_decrypt', params:[data, state.wallet] });
   return plaintext;
@@ -347,90 +307,24 @@ function toast(msg, type='info'){
  *****************/
 let currentTags = [];
 function renderTags(){
-  const box = els.tagsBox;
-  const input = els.tagInput;
-  box.innerHTML = '';
-  for(const tag of currentTags){
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.innerHTML = `<span>#${tag}</span>`;
-    const x = document.createElement('button'); x.textContent='×';
-    x.onclick = () => { currentTags = currentTags.filter(t=>t!==tag); renderTags(); };
-    chip.appendChild(x);
-    box.appendChild(chip);
-  }
+  const box = els.tagsBox; const input = els.tagInput; box.innerHTML='';
+  for(const tag of currentTags){ const chip = document.createElement('span'); chip.className='chip'; chip.innerHTML = `<span>#${tag}</span>`; const x=document.createElement('button'); x.textContent='×'; x.onclick=()=>{ currentTags=currentTags.filter(t=>t!==tag); renderTags(); }; chip.appendChild(x); box.appendChild(chip); }
   box.appendChild(input);
 }
-els.tagInput.addEventListener('keydown', e=>{
-  if(e.key==='Enter' || e.key===','){
-    e.preventDefault();
-    const v = els.tagInput.value.trim().replace(/^#/,'');
-    if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); }
-    els.tagInput.value = '';
-  }
-});
-els.tagInput.addEventListener('blur', ()=>{
-  const v = els.tagInput.value.trim().replace(/^#/,'');
-  if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); }
-  els.tagInput.value='';
-});
+els.tagInput.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===','){ e.preventDefault(); const v = els.tagInput.value.trim().replace(/^#/,''); if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); } els.tagInput.value=''; } });
+els.tagInput.addEventListener('blur', ()=>{ const v=els.tagInput.value.trim().replace(/^#/,''); if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); } els.tagInput.value=''; });
 
 /*****************
  * STORAGE
  *****************/
-function loadEntries(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      state.entries = JSON.parse(raw);
-    }else{
-      // soft-upgrade path from v3/v4 keys
-      const old = localStorage.getItem('le.entries.v4') || localStorage.getItem('le.entries.v3');
-      if(old){
-        const prev = JSON.parse(old);
-        state.entries = (prev||[]);
-        persistEntries();
-      }else{
-        state.entries = [];
-      }
-    }
-  }catch{ state.entries=[]; }
-}
+function loadEntries(){ try{ const raw = localStorage.getItem(STORAGE_KEY); if(raw){ state.entries = JSON.parse(raw); } else { const old = localStorage.getItem('le.entries.v5') || localStorage.getItem('le.entries.v4') || localStorage.getItem('le.entries.v3'); if(old){ state.entries = JSON.parse(old)||[]; persistEntries(); } else { state.entries = []; } } }catch{ state.entries=[]; } }
 function persistEntries(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries)); }
 
 /*****************
  * WORKER
  *****************/
-async function checkWorker(){
-  try{
-    const res = await fetch(`${WORKER_URL}/health`, {mode:'cors'});
-    if(res.ok){
-      els.workerDot.classList.remove('bg-red-500','bg-zinc-400');
-      els.workerDot.classList.add('bg-emerald-500');
-      els.workerText.textContent='Worker healthy';
-      return true;
-    }
-    throw new Error('health not ok');
-  }catch{
-    els.workerDot.classList.remove('bg-emerald-500');
-    els.workerDot.classList.add('bg-red-500');
-    els.workerText.textContent='Worker unreachable';
-    return false;
-  }
-}
-async function pinJsonToIpfs(name, jsonObj){
-  const res = await fetch(`${WORKER_URL}/pin/json`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ name, payload: jsonObj, data: jsonObj }),
-    mode:'cors',
-    credentials:'omit',
-  });
-  if(!res.ok){
-    const t = await res.text().catch(()=>'' ); throw new Error(`Pin failed ${res.status}: ${t}`);
-  }
-  return res.json();
-}
+async function checkWorker(){ try{ const res = await fetch(`${WORKER_URL}/health`, {mode:'cors'}); if(res.ok){ els.workerDot.classList.remove('bg-red-500','bg-zinc-400'); els.workerDot.classList.add('bg-emerald-500'); els.workerText.textContent='Worker healthy'; return true; } throw new Error('health not ok'); }catch{ els.workerDot.classList.remove('bg-emerald-500'); els.workerDot.classList.add('bg-red-500'); els.workerText.textContent='Worker unreachable'; return false; } }
+async function pinJsonToIpfs(name, jsonObj){ const res = await fetch(`${WORKER_URL}/pin/json`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, payload: jsonObj, data: jsonObj }), mode:'cors', credentials:'omit' }); if(!res.ok){ const t = await res.text().catch(()=>'' ); throw new Error(`Pin failed ${res.status}: ${t}`); } return res.json(); }
 
 /*****************
  * WALLET / POLYGON
@@ -441,157 +335,68 @@ async function connectWallet(){
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     const chainId = await window.ethereum.request({ method: 'eth_chainId' });
     if(chainId !== POLYGON_CHAIN_ID){
-      try{
-        await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID }] });
-      }catch(err){
-        if(err && err.code === 4902){
-          await window.ethereum.request({
-            method:'wallet_addEthereumChain',
-            params:[{
-              chainId: POLYGON_CHAIN_ID,
-              chainName:'Polygon Mainnet',
-              nativeCurrency:{ name:'POL', symbol:'POL', decimals:18 },
-              rpcUrls:['https://polygon-rpc.com/'],
-              blockExplorerUrls:['https://polygonscan.com/']
-            }]
-          });
-        }else{ throw err; }
-      }
+      try{ await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID }] }); }
+      catch(err){ if(err && err.code === 4902){ await window.ethereum.request({ method:'wallet_addEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID, chainName:'Polygon Mainnet', nativeCurrency:{ name:'POL', symbol:'POL', decimals:18 }, rpcUrls:['https://polygon-rpc.com/'], blockExplorerUrls:['https://polygonscan.com/'] }] }); } else { throw err; } }
     }
     state.web3 = new Web3(window.ethereum);
     state.wallet = accounts[0];
     state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
     state.isConnected = true;
-    els.chainDot.classList.remove('bg-zinc-400','bg-red-500');
-    els.chainDot.classList.add('bg-emerald-500');
+    els.chainDot.classList.remove('bg-zinc-400','bg-red-500'); els.chainDot.classList.add('bg-emerald-500');
     els.chainText.textContent = `Wallet: ${state.wallet.slice(0,6)}…${state.wallet.slice(-4)}`;
     toast('Wallet connected', 'success');
 
-    // Get/cached MetaMask encryption public key
     try{
       let pk = cacheGetPubKey(state.wallet);
       if(!pk){ pk = await getMMEncryptionPublicKey(state.wallet); cacheSetPubKey(state.wallet, pk); }
-      state.mmPubKey = pk;
-      els.encDot.classList.add('bg-emerald-500');
-      els.encText.textContent = 'Enc: MetaMask available';
+      state.mmPubKey = pk; els.encDot.classList.add('bg-emerald-500'); els.encText.textContent = 'Enc: MetaMask available';
       if(els.mmToggle.checked){ state.useMetaMask = true; updateEncModeUI(); }
-    }catch(pubErr){
-      console.warn('Could not get encryption public key:', pubErr);
-      toast('This wallet does not support encryption API', 'error');
-    }
-  }catch(e){
-    console.error(e);
-    els.chainDot.classList.remove('bg-emerald-500');
-    els.chainDot.classList.add('bg-red-500');
-    els.chainText.textContent = 'Wallet: connection failed';
-    toast('Wallet connection failed', 'error');
-  }
+    }catch(pubErr){ console.warn('Could not get encryption public key:', pubErr); toast('This wallet does not support encryption API', 'error'); }
+  }catch(e){ console.error(e); els.chainDot.classList.remove('bg-emerald-500'); els.chainDot.classList.add('bg-red-500'); els.chainText.textContent = 'Wallet: connection failed'; toast('Wallet connection failed', 'error'); }
 }
 
 async function storeOnChain({ ipfsHash, title, timestamp }){
-  if(!state.isConnected || !state.contract || !state.wallet){
-    throw new Error('Wallet not connected');
-  }
+  if(!state.isConnected || !state.contract || !state.wallet){ throw new Error('Wallet not connected'); }
   let titleToSend = "Encrypted Entry";
-  if(CHAIN_TITLE_MODE === "plaintext"){
-    titleToSend = title || "Untitled";
-  }else if(CHAIN_TITLE_MODE === "encrypted"){
-    if(!state.passphrase) throw new Error('Unlock passphrase to encrypt on-chain title');
-    const enc = await encryptStringPass(title || "Untitled", state.passphrase);
-    titleToSend = JSON.stringify(enc);
-  }
-
-  let gasEstimate;
-  try{
-    gasEstimate = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
-      .estimateGas({ from: state.wallet });
-  }catch{
-    gasEstimate = 300000;
-  }
-
-  const tx = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend)
-    .send({ from: state.wallet, gas: Math.floor(gasEstimate * 1.2) });
+  if(CHAIN_TITLE_MODE === "plaintext"){ titleToSend = title || "Untitled"; }
+  else if(CHAIN_TITLE_MODE === "encrypted"){ if(!state.passphrase) throw new Error('Unlock passphrase to encrypt on-chain title'); const enc = await encryptStringPass(title || "Untitled", state.passphrase); titleToSend = JSON.stringify(enc); }
+  let gasEstimate; try{ gasEstimate = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend).estimateGas({ from: state.wallet }); } catch{ gasEstimate = 300000; }
+  const tx = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend).send({ from: state.wallet, gas: Math.floor(gasEstimate * 1.2) });
   return tx.transactionHash;
 }
 
 /*****************
  * ENC MODE UI
  *****************/
-function setLockedUI(locked){
-  if(locked){ els.encBadge.textContent='🔒 Locked'; els.encBadge.className='badge badge-red'; }
-  else{ els.encBadge.textContent='🔓 Unlocked'; els.encBadge.className='badge badge-green'; }
-}
-function updateEncModeUI(){
-  if(state.useMetaMask){
-    els.encText.textContent = state.mmPubKey ? 'Enc: MetaMask (metamask-v2, single prompt)' : 'Enc: MetaMask unavailable';
-  }else{
-    els.encText.textContent = state.passphrase ? 'Enc: passphrase (pass-v2)' : 'Enc: passphrase (locked)';
-  }
-}
+function setLockedUI(locked){ if(locked){ els.encBadge.textContent='🔒 Locked'; els.encBadge.className='badge badge-red'; } else { els.encBadge.textContent='🔓 Unlocked'; els.encBadge.className='badge badge-green'; } }
+function updateEncModeUI(){ if(state.useMetaMask){ els.encText.textContent = state.mmPubKey ? 'Enc: MetaMask (metamask-v2, single prompt)' : 'Enc: MetaMask unavailable'; } else { els.encText.textContent = state.passphrase ? 'Enc: passphrase (pass-v2)' : 'Enc: passphrase (locked)'; } }
 
 /*****************
  * ENTRY RENDERING
  *****************/
 function entryCard(entry){
-  const card = document.createElement('div');
-  card.className = 'card p-4 space-y-2';
-
-  const head = document.createElement('div');
-  head.className='flex items-start justify-between gap-3';
-
+  const card = document.createElement('div'); card.className = 'card p-4 space-y-2';
+  const head = document.createElement('div'); head.className='flex items-start justify-between gap-3';
   const left = document.createElement('div');
   left.innerHTML = `<div class="text-xs text-zinc-500">${new Date(entry.ts).toLocaleString()}</div>
                     <div class="text-lg font-medium wrap-anywhere" id="t_${entry.id}">[encrypted title]</div>
                     <div class="text-[10px] text-zinc-500">enc=${entry.enc}</div>`;
-
-  const right = document.createElement('div');
-  right.className='flex gap-2 flex-wrap';
-
-  const decBtn = document.createElement('button');
-  decBtn.className='btn btn-ghost text-sm'; decBtn.textContent='Decrypt';
-
-  const pinBtn = document.createElement('button');
-  pinBtn.className='btn btn-indigo text-sm'; pinBtn.textContent = entry.cid ? 'Pinned ✓' : 'Pin to IPFS';
-  pinBtn.disabled = !!entry.cid;
-
-  // Consolidate metamask-v1 (multi-prompt) → metamask-v2 (single-prompt)
-  const consolidateBtn = document.createElement('button');
-  consolidateBtn.className='btn btn-ghost text-sm';
-  consolidateBtn.textContent='Consolidate → single-cipher';
-  consolidateBtn.style.display = (entry.enc === 'metamask-v1') ? 'inline-flex' : 'none';
-
+  const right = document.createElement('div'); right.className='flex gap-2 flex-wrap';
+  const decBtn = document.createElement('button'); decBtn.className='btn btn-ghost text-sm'; decBtn.textContent='Decrypt';
+  const pinBtn = document.createElement('button'); pinBtn.className='btn btn-indigo text-sm'; pinBtn.textContent = entry.cid ? 'Pinned ✓' : 'Pin to IPFS'; pinBtn.disabled = !!entry.cid;
+  const consolidateBtn = document.createElement('button'); consolidateBtn.className='btn btn-ghost text-sm'; consolidateBtn.textContent='Consolidate → single-cipher'; consolidateBtn.style.display = (entry.enc === 'metamask-v1') ? 'inline-flex' : 'none';
   right.appendChild(decBtn); right.appendChild(pinBtn); right.appendChild(consolidateBtn);
   head.appendChild(left); head.appendChild(right);
-
-  const body = document.createElement('div');
-  body.className='text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap wrap-anywhere';
-  body.textContent='[encrypted body]';
-
-  const meta = document.createElement('div');
-  meta.className='flex flex-wrap items-center gap-2 text-xs text-zinc-500';
+  const body = document.createElement('div'); body.className='text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap wrap-anywhere'; body.textContent='[encrypted body]';
+  const meta = document.createElement('div'); meta.className='flex flex-wrap items-center gap-2 text-xs text-zinc-500';
   const catSpan = document.createElement('span'); catSpan.textContent='Category: (encrypted)';
   const tagsSpan = document.createElement('span'); tagsSpan.textContent='Tags: (encrypted)';
   meta.appendChild(catSpan); meta.appendChild(tagsSpan);
-
   const linkWrap = document.createElement('div');
-  if(entry.cid){
-    const a = document.createElement('a');
-    a.href = `${WORKER_URL}/ipfs/${entry.cid}`; a.target='_blank'; a.rel='noopener';
-    a.className='text-xs text-indigo-600 hover:underline';
-    a.textContent = `Open via worker gateway: ${entry.cid}`;
-    linkWrap.appendChild(a);
-  }
-  if(entry.tx){
-    const txa = document.createElement('a');
-    txa.href = `https://polygonscan.com/tx/${entry.tx}`; txa.target='_blank'; txa.rel='noopener';
-    txa.className='ml-2 text-xs text-emerald-600 hover:underline';
-    txa.textContent = 'View on Polygonscan';
-    linkWrap.appendChild(txa);
-  }
-
+  if(entry.cid){ const a = document.createElement('a'); a.href = `${WORKER_URL}/ipfs/${entry.cid}`; a.target='_blank'; a.rel='noopener'; a.className='text-xs text-indigo-600 hover:underline'; a.textContent = `Open via worker gateway: ${entry.cid}`; linkWrap.appendChild(a); }
+  if(entry.tx){ const txa = document.createElement('a'); txa.href = `https://polygonscan.com/tx/${entry.tx}`; txa.target='_blank'; txa.rel='noopener'; txa.className='ml-2 text-xs text-emerald-600 hover:underline'; txa.textContent = 'View on Polygonscan'; linkWrap.appendChild(txa); }
   card.appendChild(head); card.appendChild(body); card.appendChild(meta); card.appendChild(linkWrap);
 
-  // ---- Decrypt handler (handles v1/v2 formats) ----
   decBtn.onclick = async () => {
     try{
       const payload = await decryptEntry(entry);
@@ -599,56 +404,36 @@ function entryCard(entry){
       left.querySelector(`#t_${entry.id}`).textContent = payload.title || '(untitled)';
       body.textContent = payload.body || '(empty)';
       catSpan.textContent = 'Category: ' + (payload.category||'—');
-      const tags = Array.isArray(payload.tags) ? payload.tags : [];
-      tags.forEach(t=>state.tagsSet.add(t));
-      if(payload.category) state.categoriesSet.add(payload.category);
+      const tags = Array.isArray(payload.tags) ? payload.tags : []; tags.forEach(t=>state.tagsSet.add(t)); if(payload.category) state.categoriesSet.add(payload.category);
       tagsSpan.textContent = 'Tags: ' + (tags.length? '#'+tags.join(' #') : '—');
-      refreshFiltersUI();
-      decBtn.textContent='Decrypted'; decBtn.disabled=true;
-    }catch(e){ console.error(e); toast('Decryption failed', 'error'); }
+      refreshFiltersUI(); decBtn.textContent='Decrypted'; decBtn.disabled=true;
+    }catch(e){ console.error(e); let msg='Decryption failed'; if(String(e).includes('does not match')) msg+=' (switch to the original account in MetaMask)'; toast(msg,'error'); }
   };
 
-  // ---- Pin handler ----
   pinBtn.onclick = async () => {
     pinBtn.disabled=true; pinBtn.textContent='Pinning…';
     try{
       const payloadForIpfs = buildIpfsPayload(entry);
       const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payloadForIpfs);
       entry.cid = res.cid || res.IpfsHash || res.hash;
-      // Optional on-chain
       if(els.chainToggle.checked && state.isConnected){
-        try {
-          // Avoid prompts: don't decrypt metamask entries here; use placeholder unless passphrase path
-          let titlePlain = 'Untitled';
-          if(entry.enc === 'pass-v2' && state.passphrase){
-            try{ const p = await decryptPayloadPass(entry.cipher, state.passphrase); titlePlain = p.title || 'Untitled'; }catch{}
-          }else if(entry.enc === 'pass-v1' && state.passphrase){
-            try{ titlePlain = await decryptStringPass(entry.title, state.passphrase) || 'Untitled'; }catch{}
-          }
-          const tx = await storeOnChain({ ipfsHash: entry.cid, title: titlePlain, timestamp: Math.floor(entry.ts/1000) });
-          entry.tx = tx;
-        } catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); }
+        try { let titlePlain = 'Untitled'; if(entry.enc === 'pass-v2' && state.passphrase){ try{ const p = await decryptPayloadPass(entry.cipher, state.passphrase); titlePlain = p.title || 'Untitled'; }catch{} } else if(entry.enc === 'pass-v1' && state.passphrase){ try{ titlePlain = await decryptStringPass(entry.title, state.passphrase) || 'Untitled'; }catch{} }
+          const tx = await storeOnChain({ ipfsHash: entry.cid, title: titlePlain, timestamp: Math.floor(entry.ts/1000) }); entry.tx = tx; }
+        catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); }
       }
-      persistEntries();
-      renderList();
-      toast('Pinned to IPFS', 'success');
+      persistEntries(); renderList(); toast('Pinned to IPFS', 'success');
     }catch(err){ console.error(err); toast('Pin failed (see console)', 'error'); pinBtn.disabled=false; pinBtn.textContent='Pin to IPFS'; }
   };
 
-  // ---- Consolidate metamask-v1 → metamask-v2 ----
   consolidateBtn.onclick = async () => {
     try{
       if(entry.enc !== 'metamask-v1'){ toast('Already single-cipher'); return; }
       if(!state.isConnected || !state.wallet){ toast('Connect wallet first'); return; }
-      // This will prompt multiple times once, to read legacy fields
-      const title = await decryptWithMetaMask(entry.title);
-      const text  = await decryptWithMetaMask(entry.body);
+      const title = await decryptWithMetaMask(entry.title); const text  = await decryptWithMetaMask(entry.body);
       let category = ''; try{ category = await decryptWithMetaMask(entry.category); }catch{}
       let tags = [];   try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{}
       const payload = { title, body:text, category, tags };
-      entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey);
-      delete entry.title; delete entry.body; delete entry.category; delete entry.tags;
-      entry.enc = 'metamask-v2';
+      entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); delete entry.title; delete entry.body; delete entry.category; delete entry.tags; entry.enc = 'metamask-v2';
       persistEntries(); renderList(); toast('Consolidated to single-cipher', 'success');
     }catch(e){ console.error(e); toast('Consolidation failed', 'error'); }
   };
@@ -656,235 +441,53 @@ function entryCard(entry){
   return card;
 }
 
-function renderList(){
-  const container = els.entries;
-  container.innerHTML='';
-  const list = state.entries.slice().sort((a,b)=>b.ts-a.ts);
-  for(const e of list){ container.appendChild(entryCard(e)); }
-  if(!list.length){
-    const empty = document.createElement('div');
-    empty.className='text-sm text-zinc-500';
-    empty.textContent='No entries yet.';
-    container.appendChild(empty);
-  }
-}
-
-function refreshFiltersUI(){
-  const catSel = els.filterCategory; const cur = catSel.value;
-  catSel.innerHTML='<option value="">All categories</option>' + Array.from(state.categoriesSet).sort().map(c=>`<option>${c}</option>`).join('');
-  if(Array.from(state.categoriesSet).includes(cur)) catSel.value=cur;
-  const tagSel = els.filterTag; const curt = tagSel.value;
-  tagSel.innerHTML='<option value="">All tags</option>' + Array.from(state.tagsSet).sort().map(t=>`<option>${t}</option>`).join('');
-  if(Array.from(state.tagsSet).includes(curt)) tagSel.value=curt;
-}
+function renderList(){ const container = els.entries; container.innerHTML=''; const list = state.entries.slice().sort((a,b)=>b.ts-a.ts); for(const e of list){ container.appendChild(entryCard(e)); } if(!list.length){ const empty = document.createElement('div'); empty.className='text-sm text-zinc-500'; empty.textContent='No entries yet.'; container.appendChild(empty); } }
+function refreshFiltersUI(){ const catSel = els.filterCategory; const cur = catSel.value; catSel.innerHTML='<option value="">All categories</option>' + Array.from(state.categoriesSet).sort().map(c=>`<option>${c}</option>`).join(''); if(Array.from(state.categoriesSet).includes(cur)) catSel.value=cur; const tagSel = els.filterTag; const curt = tagSel.value; tagSel.innerHTML='<option value="">All tags</option>' + Array.from(state.tagsSet).sort().map(t=>`<option>${t}</option>`).join(''); if(Array.from(state.tagsSet).includes(curt)) tagSel.value=curt; }
 
 /*****************
  * ENTRY HELPERS
  *****************/
-function buildIpfsPayload(entry){
-  // Normalize to a compact, versioned blob
-  if(entry.enc === 'metamask-v2'){
-    return { version: 5, enc: 'metamask-v2', ts: entry.ts, cipher: entry.cipher };
-  }else if(entry.enc === 'pass-v2'){
-    return { version: 5, enc: 'pass-v2', ts: entry.ts, cipher: entry.cipher };
-  }else{
-    // legacy formats stay verbatim
-    return { version: 4, enc: entry.enc, ts: entry.ts, title: entry.title, body: entry.body, category: entry.category, tags: entry.tags };
-  }
-}
-
-async function decryptEntry(entry){
-  if(entry.enc === 'metamask-v2'){
-    if(!state.isConnected || !state.wallet) { toast('Connect MetaMask first'); return null; }
-    const s = await decryptWithMetaMask(entry.cipher);
-    return JSON.parse(s);
-  }else if(entry.enc === 'pass-v2'){
-    if(!state.passphrase){ toast('Unlock passphrase first'); return null; }
-    return await decryptPayloadPass(entry.cipher, state.passphrase);
-  }else if(entry.enc === 'metamask-v1'){
-    // legacy: 4 prompts
-    const title = await decryptWithMetaMask(entry.title);
-    const text  = await decryptWithMetaMask(entry.body);
-    let category = ''; let tags=[];
-    try{ category = await decryptWithMetaMask(entry.category); }catch{}
-    try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{}
-    return { title, body:text, category, tags };
-  }else if(entry.enc === 'pass-v1'){
-    if(!state.passphrase){ toast('Unlock passphrase first'); return null; }
-    const title = await decryptStringPass(entry.title, state.passphrase);
-    const text  = await decryptStringPass(entry.body, state.passphrase);
-    let category = ''; let tags=[];
-    try{ category = await decryptStringPass(entry.category, state.passphrase); }catch{}
-    try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
-    return { title, body:text, category, tags };
-  }
-  return null;
-}
+function buildIpfsPayload(entry){ if(entry.enc === 'metamask-v2'){ return { version: 5, enc: 'metamask-v2', ts: entry.ts, cipher: entry.cipher }; } else if(entry.enc === 'pass-v2'){ return { version: 5, enc: 'pass-v2', ts: entry.ts, cipher: entry.cipher }; } else { return { version: 4, enc: entry.enc, ts: entry.ts, title: entry.title, body: entry.body, category: entry.category, tags: entry.tags }; } }
+async function decryptEntry(entry){ if(entry.enc === 'metamask-v2'){ if(!state.isConnected || !state.wallet) { toast('Connect MetaMask first'); return null; } const s = await decryptWithMetaMask(entry.cipher); return JSON.parse(s); } else if(entry.enc === 'pass-v2'){ if(!state.passphrase){ toast('Unlock passphrase first'); return null; } return await decryptPayloadPass(entry.cipher, state.passphrase); } else if(entry.enc === 'metamask-v1'){ const title = await decryptWithMetaMask(entry.title); const text  = await decryptWithMetaMask(entry.body); let category = ''; let tags=[]; try{ category = await decryptWithMetaMask(entry.category); }catch{} try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{} return { title, body:text, category, tags }; } else if(entry.enc === 'pass-v1'){ if(!state.passphrase){ toast('Unlock passphrase first'); return null; } const title = await decryptStringPass(entry.title, state.passphrase); const text  = await decryptStringPass(entry.body, state.passphrase); let category = ''; let tags=[]; try{ category = await decryptStringPass(entry.category, state.passphrase); }catch{} try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{} return { title, body:text, category, tags }; } return null; }
 
 /*****************
  * ACTIONS
  *****************/
-async function unlock(){
-  const p = els.pass.value.trim();
-  if(!p){ toast('Enter a passphrase'); return; }
-  await deriveKey(p, crypto.getRandomValues(new Uint8Array(16))); // sanity
-  state.passphrase = p; setLockedUI(false); updateEncModeUI(); toast('Passphrase unlocked', 'success');
-}
+async function unlock(){ const p = els.pass.value.trim(); if(!p){ toast('Enter a passphrase'); return; } await deriveKey(p, crypto.getRandomValues(new Uint8Array(16))); state.passphrase = p; setLockedUI(false); updateEncModeUI(); toast('Passphrase unlocked', 'success'); }
 function lock(){ state.passphrase=null; setLockedUI(true); updateEncModeUI(); toast('Locked'); }
 
 async function saveEntry({pin=false}={}){
-  let encMode = null;
-  if(state.useMetaMask && state.mmPubKey){ encMode = 'metamask-v2'; }
-  else if(state.passphrase){ encMode = 'pass-v2'; }
-  else { toast('Connect wallet (MM) or unlock passphrase first'); return; }
-
-  const title = (els.title.value||'').trim();
-  const text = (els.body.value||'').trim();
-  const category = (els.category.value||'').trim();
+  let encMode = null; if(state.useMetaMask && state.mmPubKey){ encMode = 'metamask-v2'; } else if(state.passphrase){ encMode = 'pass-v2'; } else { toast('Connect wallet (MM) or unlock passphrase first'); return; }
+  const title = (els.title.value||'').trim(); const text = (els.body.value||'').trim(); const category = (els.category.value||'').trim();
+  if(!title && !text){ toast('Write something first'); return; }
   const payload = { title: title||'(untitled)', body: text||'', category: category||'', tags: [...currentTags] };
-  if(!payload.title && !payload.body){ toast('Write something first'); return; }
-
-  let entry;
-  if(encMode === 'metamask-v2'){
-    const cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey);
-    entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'metamask-v2', cipher, cid:null, tx:null };
-  }else{
-    const cipher = await encryptPayloadPass(payload, state.passphrase);
-    entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'pass-v2', cipher, cid:null, tx:null };
-  }
-  state.entries.push(entry); persistEntries();
-
-  els.title.value=''; els.body.value=''; els.category.value=''; currentTags=[]; renderTags();
-  renderList(); toast('Saved locally', 'success');
-
-  if(pin){
-    try{
-      const payloadForIpfs = buildIpfsPayload(entry);
-      const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payloadForIpfs);
-      entry.cid = res.cid || res.IpfsHash || res.hash;
-      if(els.chainToggle.checked && state.isConnected){
-        try {
-          const tx = await storeOnChain({ ipfsHash: entry.cid, title: payload.title, timestamp: Math.floor(entry.ts/1000) });
-          entry.tx = tx;
-        } catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); }
-      }
-      persistEntries(); renderList(); toast('Pinned to IPFS', 'success');
-    }catch(e){ console.error(e); toast('Pinned failed (local save succeeded)', 'error'); }
-  }
+  let entry; if(encMode === 'metamask-v2'){ const cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'metamask-v2', cipher, cid:null, tx:null }; } else { const cipher = await encryptPayloadPass(payload, state.passphrase); entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'pass-v2', cipher, cid:null, tx:null }; }
+  state.entries.push(entry); persistEntries(); els.title.value=''; els.body.value=''; els.category.value=''; currentTags=[]; renderTags(); renderList(); toast('Saved locally', 'success');
+  if(pin){ try{ const payloadForIpfs = buildIpfsPayload(entry); const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payloadForIpfs); entry.cid = res.cid || res.IpfsHash || res.hash; if(els.chainToggle.checked && state.isConnected){ try { const tx = await storeOnChain({ ipfsHash: entry.cid, title: payload.title, timestamp: Math.floor(entry.ts/1000) }); entry.tx = tx; } catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); } } persistEntries(); renderList(); toast('Pinned to IPFS', 'success'); }catch(e){ console.error(e); toast('Pinned failed (local save succeeded)', 'error'); } }
 }
 
-async function migrateAll(){
-  if(!state.entries.length){ toast('No entries to migrate'); return; }
-  if(!state.mmPubKey){ toast('Connect wallet first'); return; }
-  if(!state.passphrase){ toast('Unlock passphrase first'); return; }
-  let count = 0;
-  for(const entry of state.entries){
-    if(entry.enc !== 'pass-v1') continue;
-    try{
-      const title = await decryptStringPass(entry.title, state.passphrase);
-      const text  = await decryptStringPass(entry.body, state.passphrase);
-      let category = ''; try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{}
-      let tags = [];  try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{}
-      const payload = { title, body:text, category, tags };
-      entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey);
-      delete entry.title; delete entry.body; delete entry.category; delete entry.tags;
-      entry.enc = 'metamask-v2';
-      count++;
-    }catch(e){ console.warn('Failed to migrate an entry:', e); }
-  }
-  persistEntries(); renderList(); toast(`Migrated ${count} entr${count===1?'y':'ies'} to MetaMask (single prompt)`, 'success');
-}
+async function migrateAll(){ if(!state.entries.length){ toast('No entries to migrate'); return; } if(!state.mmPubKey){ toast('Connect wallet first'); return; } if(!state.passphrase){ toast('Unlock passphrase first'); return; } let count = 0; for(const entry of state.entries){ if(entry.enc !== 'pass-v1') continue; try{ const title = await decryptStringPass(entry.title, state.passphrase); const text  = await decryptStringPass(entry.body, state.passphrase); let category = ''; try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{} let tags = [];  try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{} const payload = { title, body:text, category, tags }; entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); delete entry.title; delete entry.body; delete entry.category; delete entry.tags; entry.enc = 'metamask-v2'; count++; }catch(e){ console.warn('Failed to migrate an entry:', e); } } persistEntries(); renderList(); toast(`Migrated ${count} entr${count===1?'y':'ies'} to MetaMask (single prompt)`, 'success'); }
 
 /*****************
  * EXPORT / IMPORT
  *****************/
-function exportAll(){
-  const data = { version:5, exportedAt:new Date().toISOString(), entries: state.entries };
-  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `life-examined-backup-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-}
-function importAll(file){
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    try{
-      const data = JSON.parse(reader.result);
-      let entries = [];
-      if(Array.isArray(data.entries)){ entries = data.entries; }
-      else if(Array.isArray(data)){ entries = data; }
-      else{ throw new Error('Invalid file'); }
-      const map = new Map(state.entries.map(e=>[e.id,e]));
-      for(const e of entries){ map.set(e.id,e); }
-      state.entries = Array.from(map.values());
-      persistEntries(); renderList(); toast('Import complete','success');
-    }catch(e){ console.error(e); toast('Import failed','error'); }
-  };
-  reader.readAsText(file);
-}
+function exportAll(){ const data = { version:5.1, exportedAt:new Date().toISOString(), entries: state.entries }; const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `life-examined-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove(); }
+function importAll(file){ const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(reader.result); let entries = []; if(Array.isArray(data.entries)){ entries = data.entries; } else if(Array.isArray(data)){ entries = data; } else { throw new Error('Invalid file'); } const map = new Map(state.entries.map(e=>[e.id,e])); for(const e of entries){ map.set(e.id,e); } state.entries = Array.from(map.values()); persistEntries(); renderList(); toast('Import complete','success'); }catch(e){ console.error(e); toast('Import failed','error'); } }; reader.readAsText(file); }
 
 /*****************
  * SYNC FROM CHAIN
  *****************/
-async function syncFromChain(){
-  try{
-    if(!state.isConnected || !state.contract || !state.wallet){ toast('Connect wallet first', 'error'); return; }
-    const records = await state.contract.methods.getMyEntries().call({ from: state.wallet });
-    let added = 0;
-    for(const r of records){
-      const cid = r.ipfsHash; if(!cid) continue;
-      if(state.entries.some(e => e.cid === cid)) continue; // already have
-      try{
-        const res = await fetch(`${WORKER_URL}/ipfs/${cid}`, { mode:'cors' });
-        if(!res.ok) continue;
-        const obj = await res.json();
-        const ts = obj.ts ? obj.ts : (Number(r.timestamp) * 1000) || Date.now();
-        const id = obj.id || crypto.randomUUID();
-        const enc = obj.enc || 'pass-v1';
-        const entry = { id, ts, enc, cid, tx:null };
-        if(obj.cipher){ entry.cipher = obj.cipher; }
-        else{ entry.title=obj.title; entry.body=obj.body; entry.category=obj.category; entry.tags=obj.tags; }
-        state.entries.push(entry); added++;
-      }catch(e){ console.warn('Failed to fetch CID', cid, e); }
-    }
-    if(added){ persistEntries(); renderList(); }
-    toast(added ? `Synced ${added} entr${added===1?'y':'ies'} from chain` : 'No new entries on chain', added? 'success':'info');
-  }catch(e){ console.error(e); toast('Sync failed', 'error'); }
-}
+async function syncFromChain(){ try{ if(!state.isConnected || !state.contract || !state.wallet){ toast('Connect wallet first', 'error'); return; } const records = await state.contract.methods.getMyEntries().call({ from: state.wallet }); let added = 0; for(const r of records){ const cid = r.ipfsHash; if(!cid) continue; if(state.entries.some(e => e.cid === cid)) continue; try{ const res = await fetch(`${WORKER_URL}/ipfs/${cid}`, { mode:'cors' }); if(!res.ok) continue; const obj = await res.json(); const ts = obj.ts ? obj.ts : (Number(r.timestamp) * 1000) || Date.now(); const id = obj.id || crypto.randomUUID(); const enc = obj.enc || 'pass-v1'; const entry = { id, ts, enc, cid, tx:null }; if(obj.cipher){ entry.cipher = obj.cipher; } else { entry.title=obj.title; entry.body=obj.body; entry.category=obj.category; entry.tags=obj.tags; } state.entries.push(entry); added++; }catch(e){ console.warn('Failed to fetch CID', cid, e); } } if(added){ persistEntries(); renderList(); } toast(added ? `Synced ${added} entr${added===1?'y':'ies'} from chain` : 'No new entries on chain', added? 'success':'info'); }catch(e){ console.error(e); toast('Sync failed', 'error'); } }
 
 /*****************
  * EVENTS
  *****************/
-els.unlock.onclick = unlock;
-els.lock.onclick = lock;
-els.saveLocal.onclick = ()=>saveEntry({pin:false});
-els.saveIpfs.onclick  = ()=>saveEntry({pin:true});
-els.selfCheck.onclick = async ()=>{
-  try{
-    if(!state.mmPubKey || !state.wallet){ toast('Connect wallet first'); return; }
-    const sample = { hello: 'world', at: new Date().toISOString() };
-    const cipher = encryptWithMetaMask(JSON.stringify(sample), state.mmPubKey);
-    const plain  = await decryptWithMetaMask(cipher);
-    const ok = JSON.parse(plain).hello === 'world';
-    if(ok){ toast('Self-check: OK','success'); } else { throw new Error('Mismatch'); }
-  }catch(e){ console.error(e); toast('Self-check failed','error'); }
-};
-els.export.onclick = exportAll;
-els.import.onchange = e=>{ if(e.target.files?.[0]) importAll(e.target.files[0]); };
-els.clear.onclick = ()=>{ if(confirm('Delete all locally stored encrypted entries?')){ state.entries=[]; persistEntries(); renderList(); toast('Cleared'); } };
-els.search.oninput = renderList;
-els.filterCategory.onchange = renderList;
-els.filterTag.onchange = renderList;
-els.connectBtn.onclick = connectWallet;
-els.mmToggle.onchange = (e)=>{ state.useMetaMask = !!e.target.checked; if(state.useMetaMask && !state.mmPubKey){ toast('Connect wallet to use MetaMask encryption','error'); e.target.checked=false; state.useMetaMask=false; } updateEncModeUI(); };
-els.migrateAllBtn.onclick = migrateAll;
-els.syncBtn.onclick = syncFromChain;
+els.unlock.onclick = unlock; els.lock.onclick = lock; els.saveLocal.onclick = ()=>saveEntry({pin:false}); els.saveIpfs.onclick  = ()=>saveEntry({pin:true});
+els.selfCheck.onclick = async ()=>{ try{ if(!state.mmPubKey || !state.wallet){ toast('Connect wallet first'); return; } const sample = { hello: 'world', at: new Date().toISOString() }; const cipher = encryptWithMetaMask(JSON.stringify(sample), state.mmPubKey); const plain  = await decryptWithMetaMask(cipher); const ok = JSON.parse(plain).hello === 'world'; if(ok){ toast('Self-check: OK','success'); } else { throw new Error('Mismatch'); } }catch(e){ console.error(e); let msg = 'Self-check failed'; if(String(e).includes('does not match')) msg += ' (switch to the connected account in MetaMask)'; toast(msg,'error'); } };
+els.export.onclick = exportAll; els.import.onchange = e=>{ if(e.target.files?.[0]) importAll(e.target.files[0]); }; els.clear.onclick = ()=>{ if(confirm('Delete all locally stored encrypted entries?')){ state.entries=[]; persistEntries(); renderList(); toast('Cleared'); } };
+els.search.oninput = renderList; els.filterCategory.onchange = renderList; els.filterTag.onchange = renderList; els.connectBtn.onclick = connectWallet; els.mmToggle.onchange = (e)=>{ state.useMetaMask = !!e.target.checked; if(state.useMetaMask && !state.mmPubKey){ toast('Connect wallet to use MetaMask encryption','error'); e.target.checked=false; state.useMetaMask=false; } updateEncModeUI(); }; els.migrateAllBtn.onclick = migrateAll; els.syncBtn.onclick = syncFromChain;
 
-if(window.ethereum){
-  window.ethereum.on?.('accountsChanged', async ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: account changed'; els.chainDot.classList.add('bg-zinc-400'); state.mmPubKey = null; updateEncModeUI(); });
-  window.ethereum.on?.('chainChanged', ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: chain changed'; els.chainDot.classList.add('bg-zinc-400'); });
-}
+if(window.ethereum){ window.ethereum.on?.('accountsChanged', async ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: account changed'; els.chainDot.classList.add('bg-zinc-400'); state.mmPubKey = null; updateEncModeUI(); }); window.ethereum.on?.('chainChanged', ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: chain changed'; els.chainDot.classList.add('bg-zinc-400'); }); }
 
 /*****************
  * INIT
