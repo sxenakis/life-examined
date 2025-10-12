@@ -2,497 +2,504 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Life Examined — MetaMask Native Encryption (v5.1 single‑prompt)</title>
-  <meta name="color-scheme" content="light dark">
-  <!-- Tailwind -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Life Examined — Event‑Only Journal (Polygon)</title>
+  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Web3 (for optional Polygon on-chain logging) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <!-- MetaMask official encrypt helper (UMD) -->
-  <script src="https://unpkg.com/@metamask/eth-sig-util@7.0.1/dist/eth-sig-util.umd.js" crossorigin="anonymous"></script>
-  <!-- tweetnacl fallback (not used if eth-sig-util is present) -->
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js" crossorigin="anonymous"></script>
-  <link rel="icon" href="data:,">
+  <!-- Ethers v6 UMD (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+  <!-- MetaMask eth-sig-util UMD (CDN) provides window.ethSigUtil -->
+  <script src="https://unpkg.com/@metamask/eth-sig-util@6.0.1/dist/index.umd.js"></script>
   <style>
-    :root { --ring: #6366f1; }
-    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
-    .wrap-anywhere{overflow-wrap:anywhere}
-    .chip{display:inline-flex;align-items:center;gap:.4rem;padding:.2rem .6rem;border-radius:9999px;background:rgba(99,102,241,.12);font-size:.75rem}
-    .chip button{all:unset;cursor:pointer;font-weight:700;opacity:.7}
-    .ring:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
-    .btn{padding:.625rem .9rem;border-radius:.6rem}
-    .btn-primary{background:#111827;color:#fff}
-    .btn-primary:hover{background:#0b1220}
-    .btn-indigo{background:#4f46e5;color:#fff}
-    .btn-indigo:hover{background:#4338ca}
-    .btn-ghost{background:rgba(0,0,0,.06)}
-    .btn-ghost:hover{background:rgba(0,0,0,.12)}
-    .badge{font-size:.7rem;padding:.2rem .5rem;border-radius:.5rem}
-    .badge-green{background:rgba(16,185,129,.15);color:#059669}
-    .badge-red{background:rgba(239,68,68,.15);color:#dc2626}
-    .badge-amber{background:rgba(245,158,11,.15);color:#d97706}
-    .card{border:1px solid rgba(120,120,120,.18);border-radius:1rem;background:#fff}
-    .toast{position:fixed;right:1rem;bottom:1rem;padding:.6rem .8rem;border-radius:.6rem;color:#fff;z-index:1000;opacity:.98}
-    .toast-info{background:#3b82f6}.toast-err{background:#ef4444}.toast-ok{background:#10b981}
-    @media (prefers-color-scheme: dark){
-      body{background:#0b0b0f;color:#e5e7eb}
-      .card{background:#0f1115;border-color:#222}
-      .btn-ghost{background:rgba(255,255,255,.08)}
-      .btn-ghost:hover{background:rgba(255,255,255,.12)}
-    }
+    /* prevent long JSON from blowing layout */
+    .break-any { word-break: break-word; overflow-wrap: anywhere; }
   </style>
 </head>
-<body class="min-h-screen">
-  <div class="max-w-7xl mx-auto p-4 sm:p-6">
-    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold">Life Examined — MetaMask Native</h1>
-        <p class="text-sm text-zinc-500">E2E journal using MetaMask <code>eth_getEncryptionPublicKey</code>/<code>eth_decrypt</code>. IPFS via Worker; optional Polygon logging.</p>
-      </div>
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
-          <span id="workerDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
-          <span id="workerText">Checking worker…</span>
-        </span>
-        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
-          <span id="chainDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
-          <span id="chainText">Wallet: not connected</span>
-        </span>
-        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-800">
-          <span id="encDot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
-          <span id="encText">Enc: passphrase</span>
-        </span>
-        <button id="connectBtn" class="btn btn-ghost text-sm">Connect MetaMask</button>
-        <label class="flex items-center gap-2 text-xs">
-          <input id="mmToggle" type="checkbox" class="accent-indigo-600">
-          Use MetaMask encryption (recommended)
-        </label>
-        <button id="lockBtn" class="btn btn-primary text-sm">Lock (passphrase)</button>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <div class="max-w-5xl mx-auto p-4 sm:p-8">
+    <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <h1 class="text-2xl sm:text-3xl font-bold">Life Examined — Event‑Only Journal (Polygon)</h1>
+      <div class="flex items-center gap-2">
+        <button id="btnConnect" class="px-4 py-2 rounded-2xl bg-indigo-600 text-white font-medium shadow hover:bg-indigo-700">Connect MetaMask</button>
+        <button id="btnSwitch" class="px-4 py-2 rounded-2xl bg-slate-200 font-medium hover:bg-slate-300">Switch to Polygon</button>
       </div>
     </header>
 
-    <section class="mt-4">
-      <div class="card p-4">
-        <label for="passphrase" class="block text-sm font-medium">Legacy passphrase (for migration or fallback)</label>
-        <div class="mt-2 flex gap-2">
-          <input id="passphrase" type="password" class="w-full ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Enter passphrase if you have old entries" />
-          <button id="unlockBtn" class="btn btn-indigo">Unlock</button>
-        </div>
-        <p class="text-xs text-zinc-500 mt-2">Passphrase never leaves this device. AES-GCM 256 with PBKDF2 (150k iters). Used for <em>pass-v1</em> (legacy) and new <em>pass-v2</em> payload bundles.</p>
-        <div class="mt-2 flex items-center gap-2 flex-wrap">
-          <button id="migrateAllBtn" class="btn btn-ghost text-sm">Re-encrypt all pass-v1 → MetaMask (single prompt)</button>
-          <span class="text-xs text-zinc-500">Connect wallet + unlock passphrase first.</span>
-        </div>
+    <section class="mt-4 grid gap-4 sm:grid-cols-3">
+      <div class="p-4 bg-white rounded-2xl shadow">
+        <div class="text-sm text-slate-500">Account</div>
+        <div id="account" class="font-mono text-sm mt-1">—</div>
+      </div>
+      <div class="p-4 bg-white rounded-2xl shadow">
+        <div class="text-sm text-slate-500">Chain</div>
+        <div id="chain" class="font-mono text-sm mt-1">—</div>
+      </div>
+      <div class="p-4 bg-white rounded-2xl shadow">
+        <div class="text-sm text-slate-500">Contract</div>
+        <div id="contractAddr" class="font-mono text-sm mt-1">—</div>
       </div>
     </section>
 
-    <section class="mt-6">
-      <div class="card p-4">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="font-semibold">New entry</h2>
-          <div class="flex items-center gap-2">
-            <span id="encBadge" class="badge badge-red">🔒 Locked</span>
-            <label class="flex items-center gap-2 text-xs">
-              <input id="chainToggle" type="checkbox" class="accent-indigo-600">
-              Also write to Polygon (on-chain hash only)
-            </label>
-          </div>
-        </div>
-        <div class="mt-3 grid gap-3">
-          <input id="title" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Title" />
-          <div class="grid sm:grid-cols-2 gap-3">
-            <input id="category" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Category (optional)" />
-            <div id="tagsBox" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-2 flex flex-wrap gap-2">
-              <input id="tagInput" class="flex-1 min-w-[10ch] bg-transparent outline-none" placeholder="Add tag and press Enter" />
-            </div>
-          </div>
-          <textarea id="body" rows="10" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" placeholder="Write your thoughts (plaintext is never saved or sent)"></textarea>
-          <div class="flex flex-wrap items-center gap-3">
-            <button id="saveLocalBtn" class="btn btn-primary">Save locally</button>
-            <button id="saveIpfsBtn" class="btn btn-indigo">Save + Pin to IPFS</button>
-            <button id="selfCheckBtn" class="btn btn-ghost">Run self-check</button>
-            <span class="text-xs text-zinc-500">Local save keeps the encrypted entry in your browser. Pinning stores an encrypted copy on IPFS via your Worker. If the Polygon toggle is on and you’re connected, the IPFS hash is also recorded on-chain.</span>
-          </div>
-        </div>
+    <section class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+      <p class="text-sm leading-relaxed">
+        <strong>Instructions:</strong> This is a single‑file client‑only app. It encrypts your entry using MetaMask native encryption and stores the cipher JSON in an <em>event</em> on Polygon.
+        Set <code>CONTRACT_ADDRESS</code> (below, in code) to your deployed contract on Polygon mainnet. Optionally set <code>DEPLOY_BLOCK</code> to speed up log scans.
+      </p>
+    </section>
+
+    <section class="mt-6 p-4 bg-white rounded-2xl shadow">
+      <h2 class="text-xl font-semibold mb-3">Self‑check (encrypt → decrypt)</h2>
+      <div class="flex items-center gap-2">
+        <button id="btnSelfCheck" class="px-4 py-2 rounded-2xl bg-emerald-600 text-white font-medium hover:bg-emerald-700">Run Self‑Check</button>
+        <div id="selfCheckMsg" class="text-sm"></div>
       </div>
     </section>
 
-    <section class="mt-6">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="font-semibold">Entries</h2>
-        <div class="flex flex-wrap gap-2">
-          <input id="search" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm" placeholder="Search (decrypt first)" />
-          <select id="filterCategory" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm">
-            <option value="">All categories</option>
-          </select>
-          <select id="filterTag" class="ring rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm">
-            <option value="">All tags</option>
-          </select>
-          <button id="exportBtn" class="btn btn-ghost text-sm">Export</button>
-          <label class="btn btn-ghost text-sm cursor-pointer">Import<input id="importFile" type="file" accept="application/json" class="hidden"></label>
-          <button id="syncBtn" class="btn btn-ghost text-sm">Sync from chain</button>
-          <button id="clearBtn" class="btn btn-ghost text-sm">Clear all (local)</button>
+    <section class="mt-6 p-4 bg-white rounded-2xl shadow">
+      <h2 class="text-xl font-semibold mb-3">New Entry</h2>
+      <form id="entryForm" class="grid gap-3">
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="block"> <span class="text-sm text-slate-600">Title</span>
+            <input id="title" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="A day in Taipei" />
+          </label>
+          <label class="block"> <span class="text-sm text-slate-600">Category</span>
+            <input id="category" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="journal" />
+          </label>
         </div>
-      </div>
-      <div id="entries" class="mt-3 grid gap-3"></div>
+        <label class="block"> <span class="text-sm text-slate-600">Tags (comma‑separated)</span>
+          <input id="tags" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="life, reflection" />
+        </label>
+        <label class="block"> <span class="text-sm text-slate-600">Body</span>
+          <textarea id="body" rows="6" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Write your entry here..."></textarea>
+        </label>
+        <div class="flex items-center gap-2">
+          <button id="btnPublish" type="submit" class="px-4 py-2 rounded-2xl bg-indigo-600 text-white font-medium hover:bg-indigo-700">Encrypt & Append Event</button>
+          <div id="publishMsg" class="text-sm"></div>
+        </div>
+      </form>
     </section>
 
-    <footer class="mt-10 text-xs text-zinc-500">
-      <div class="mono">Worker: <span id="workerUrl" class="wrap-anywhere"></span></div>
-      <div class="mono">Contract: <span id="contractAddr"></span></div>
-      <p class="mt-1">Worker routes: <code class="mono">GET /health</code>, <code class="mono">POST /pin/json</code>, <code class="mono">GET /ipfs/:cid</code></p>
+    <section class="mt-6 p-4 bg-white rounded-2xl shadow">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="text-xl font-semibold">My Entries</h2>
+        <div class="text-sm">You have <span id="count">0</span> entries</div>
+      </div>
+      <div class="mt-3 flex flex-wrap items-end gap-3">
+        <label class="block"> <span class="text-xs text-slate-500">Scan from block (hint: contract deploy block)</span>
+          <input id="fromBlock" type="number" class="mt-1 w-40 px-3 py-2 rounded-xl border border-slate-300" placeholder="0" />
+        </label>
+        <label class="block"> <span class="text-xs text-slate-500">Chunk size (blocks)</span>
+          <input id="chunkSize" type="number" class="mt-1 w-40 px-3 py-2 rounded-xl border border-slate-300" value="50000" />
+        </label>
+        <div class="flex items-center gap-2">
+          <button id="btnRefresh" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Refresh List</button>
+          <button id="btnExportJSON" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Export JSON</button>
+          <button id="btnExportCSV" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Export CSV</button>
+        </div>
+      </div>
+      <ol id="entries" class="mt-4 grid gap-3"></ol>
+    </section>
+
+    <footer class="mt-10 text-center text-xs text-slate-500">
+      No local storage. Everything is sourced from on‑chain events. If MetaMask decrypt is greyed out, switch to the account that created the entry.
     </footer>
   </div>
 
 <script>
-/*****************
- * CONFIG
- *****************/
-const WORKER_URL = "https://life-examined-worker.sjx-feb.workers.dev"; // unchanged
-const POLYGON_CHAIN_ID = "0x89"; // Polygon mainnet
-const CONTRACT_ADDRESS = "0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A";
-const CHAIN_TITLE_MODE = "placeholder"; // 'placeholder' | 'plaintext' | 'encrypted'
+(() => {
+  // ======= CONFIG =======
+  // TODO: Set to your deployed Polygon mainnet address
+  const CONTRACT_ADDRESS = "0xYourDeployedContractOnPolygon";
+  // Optional: starting block for scanning (speeds up log fetch). Put your contract deploy block if known.
+  const DEPLOY_BLOCK = 0; // e.g. 61800000 for newer deployments; 0 will scan from genesis.
 
-const CONTRACT_ABI = [
-  {"inputs":[{"internalType":"string","name":"_ipfsHash","type":"string"},{"internalType":"uint256","name":"_timestamp","type":"uint256"},{"internalType":"string","name":"_title","type":"string"}],"name":"storeEntry","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[],"name":"getMyEntries","outputs":[{"components":[{"internalType":"string","name":"ipfsHash","type":"string"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"string","name":"title","type":"string"},{"internalType":"address","name":"author","type":"address"}],"internalType":"struct LifeExamined.Entry[]","name":[],"type":"tuple[]"}],"stateMutability":"view","type":"function"},
-  {"inputs":[],"name":"totalEntries","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
-];
+  // Polygon mainnet params for wallet_addEthereumChain
+  const POLYGON_PARAMS = {
+    chainId: "0x89",
+    chainName: "Polygon Mainnet",
+    nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+    rpcUrls: [
+      "https://polygon-rpc.com",
+      "https://rpc.ankr.com/polygon",
+      "https://polygon-bor-rpc.publicnode.com"
+    ],
+    blockExplorerUrls: ["https://polygonscan.com"]
+  };
 
-document.getElementById('workerUrl').textContent = WORKER_URL;
-document.getElementById('contractAddr').textContent = CONTRACT_ADDRESS;
-
-/*****************
- * STATE
- *****************/
-const state = {
-  passphrase: null,
-  entries: [], // v5 single-cipher entries: pass-v2 | metamask-v2
-  tagsSet: new Set(),
-  categoriesSet: new Set(),
-  web3: null,
-  isConnected: false,
-  wallet: "",
-  contract: null,
-  mmPubKey: null, // base64
-  useMetaMask: false
-};
-
-const STORAGE_KEY = "le.entries.v5.1"; // bump to avoid parsing older shapes
-const MM_CACHE_KEY = 'le.mmPubKeyCache.v1';
-
-/*****************
- * DOM
- *****************/
-const els = {
-  pass: document.getElementById('passphrase'),
-  unlock: document.getElementById('unlockBtn'),
-  lock: document.getElementById('lockBtn'),
-  encBadge: document.getElementById('encBadge'),
-  title: document.getElementById('title'),
-  category: document.getElementById('category'),
-  tagInput: document.getElementById('tagInput'),
-  tagsBox: document.getElementById('tagsBox'),
-  body: document.getElementById('body'),
-  saveLocal: document.getElementById('saveLocalBtn'),
-  saveIpfs: document.getElementById('saveIpfsBtn'),
-  selfCheck: document.getElementById('selfCheckBtn'),
-  entries: document.getElementById('entries'),
-  export: document.getElementById('exportBtn'),
-  import: document.getElementById('importFile'),
-  clear: document.getElementById('clearBtn'),
-  search: document.getElementById('search'),
-  filterCategory: document.getElementById('filterCategory'),
-  filterTag: document.getElementById('filterTag'),
-  workerDot: document.getElementById('workerDot'),
-  workerText: document.getElementById('workerText'),
-  chainDot: document.getElementById('chainDot'),
-  chainText: document.getElementById('chainText'),
-  encDot: document.getElementById('encDot'),
-  encText: document.getElementById('encText'),
-  connectBtn: document.getElementById('connectBtn'),
-  chainToggle: document.getElementById('chainToggle'),
-  mmToggle: document.getElementById('mmToggle'),
-  migrateAllBtn: document.getElementById('migrateAllBtn'),
-  syncBtn: document.getElementById('syncBtn')
-};
-
-/*****************
- * UTILITIES
- *****************/
-const te = new TextEncoder();
-const td = new TextDecoder();
-function b64e(bytes){ return btoa(String.fromCharCode(...new Uint8Array(bytes))); }
-function b64d(str){ return Uint8Array.from(atob(str), c=>c.charCodeAt(0)); }
-function cacheGetPubKey(addr){ try{ const m=JSON.parse(localStorage.getItem(MM_CACHE_KEY)||'{}'); return m[addr.toLowerCase()]||null; }catch{ return null; } }
-function cacheSetPubKey(addr,key){ try{ const m=JSON.parse(localStorage.getItem(MM_CACHE_KEY)||'{}'); m[addr.toLowerCase()]=key; localStorage.setItem(MM_CACHE_KEY, JSON.stringify(m)); }catch{} }
-
-/*****************
- * LEGACY AES-GCM (pass-v1)
- *****************/
-async function deriveKey(passphrase, saltBytes) {
-  const baseKey = await crypto.subtle.importKey('raw', te.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name:'PBKDF2', salt: saltBytes, iterations: 150000, hash:'SHA-256' },
-    baseKey,
-    { name:'AES-GCM', length:256 },
-    false,
-    ['encrypt','decrypt']
-  );
-}
-async function encryptStringPass(plaintext, passphrase) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv   = crypto.getRandomValues(new Uint8Array(12));
-  const key  = await deriveKey(passphrase, salt);
-  const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, te.encode(plaintext));
-  return { salt: b64e(salt), iv: b64e(iv), ciphertext: b64e(ct) };
-}
-async function decryptStringPass(bundle, passphrase) {
-  const salt = b64d(bundle.salt);
-  const iv   = b64d(bundle.iv);
-  const ct   = b64d(bundle.ciphertext);
-  const key  = await deriveKey(passphrase, salt);
-  const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
-  return td.decode(pt);
-}
-async function encryptPayloadPass(payloadObj, passphrase){ return encryptStringPass(JSON.stringify(payloadObj), passphrase); }
-async function decryptPayloadPass(bundle, passphrase){ const s = await decryptStringPass(bundle, passphrase); return JSON.parse(s); }
-
-/*****************
- * METAMASK (metamask-v1/v2)
- *****************/
-async function getMMEncryptionPublicKey(address){
-  return await window.ethereum.request({ method:'eth_getEncryptionPublicKey', params:[address] });
-}
-function encryptWithMetaMask(plaintext, pubKeyB64){
-  // Prefer official helper (ensures exact shape MetaMask expects)
-  if (window.ethSigUtil && window.ethSigUtil.encrypt){
-    return window.ethSigUtil.encrypt({ publicKey: pubKeyB64, data: plaintext, version: 'x25519-xsalsa20-poly1305' });
-  }
-  // Fallback to hand-rolled nacl (same shape)
-  if(!window.nacl) throw new Error('tweetnacl not loaded');
-  const pubKey = b64d(pubKeyB64);
-  const ephem = window.nacl.box.keyPair();
-  const nonce = window.nacl.randomBytes(24);
-  const message = te.encode(plaintext);
-  const box = window.nacl.box(message, nonce, pubKey, ephem.secretKey);
-  return { version: 'x25519-xsalsa20-poly1305', nonce: b64e(nonce), ephemPublicKey: b64e(ephem.publicKey), ciphertext: b64e(box) };
-}
-async function decryptWithMetaMask(cipherObj){
-  // Guard: selected account in MetaMask must match the connected wallet
-  const selected = (await window.ethereum.request({ method:'eth_accounts' }))[0];
-  if(!selected || selected.toLowerCase() !== state.wallet.toLowerCase()){
-    throw new Error('Selected MetaMask account does not match connected wallet. Switch account to '+state.wallet+' and try again.');
-  }
-  const data = JSON.stringify(cipherObj);
-  const plaintext = await window.ethereum.request({ method:'eth_decrypt', params:[data, state.wallet] });
-  return plaintext;
-}
-
-/*****************
- * TOAST
- *****************/
-function toast(msg, type='info'){
-  const t = document.createElement('div');
-  t.textContent = msg;
-  t.className = 'toast ' + (type==='error'?'toast-err':type==='success'?'toast-ok':'toast-info');
-  document.body.appendChild(t);
-  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2200);
-  setTimeout(()=> t.remove(), 2800);
-}
-
-/*****************
- * TAG INPUT
- *****************/
-let currentTags = [];
-function renderTags(){
-  const box = els.tagsBox; const input = els.tagInput; box.innerHTML='';
-  for(const tag of currentTags){ const chip = document.createElement('span'); chip.className='chip'; chip.innerHTML = `<span>#${tag}</span>`; const x=document.createElement('button'); x.textContent='×'; x.onclick=()=>{ currentTags=currentTags.filter(t=>t!==tag); renderTags(); }; chip.appendChild(x); box.appendChild(chip); }
-  box.appendChild(input);
-}
-els.tagInput.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===','){ e.preventDefault(); const v = els.tagInput.value.trim().replace(/^#/,''); if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); } els.tagInput.value=''; } });
-els.tagInput.addEventListener('blur', ()=>{ const v=els.tagInput.value.trim().replace(/^#/,''); if(v && !currentTags.includes(v)){ currentTags.push(v); renderTags(); } els.tagInput.value=''; });
-
-/*****************
- * STORAGE
- *****************/
-function loadEntries(){ try{ const raw = localStorage.getItem(STORAGE_KEY); if(raw){ state.entries = JSON.parse(raw); } else { const old = localStorage.getItem('le.entries.v5') || localStorage.getItem('le.entries.v4') || localStorage.getItem('le.entries.v3'); if(old){ state.entries = JSON.parse(old)||[]; persistEntries(); } else { state.entries = []; } } }catch{ state.entries=[]; } }
-function persistEntries(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries)); }
-
-/*****************
- * WORKER
- *****************/
-async function checkWorker(){ try{ const res = await fetch(`${WORKER_URL}/health`, {mode:'cors'}); if(res.ok){ els.workerDot.classList.remove('bg-red-500','bg-zinc-400'); els.workerDot.classList.add('bg-emerald-500'); els.workerText.textContent='Worker healthy'; return true; } throw new Error('health not ok'); }catch{ els.workerDot.classList.remove('bg-emerald-500'); els.workerDot.classList.add('bg-red-500'); els.workerText.textContent='Worker unreachable'; return false; } }
-async function pinJsonToIpfs(name, jsonObj){ const res = await fetch(`${WORKER_URL}/pin/json`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, payload: jsonObj, data: jsonObj }), mode:'cors', credentials:'omit' }); if(!res.ok){ const t = await res.text().catch(()=>'' ); throw new Error(`Pin failed ${res.status}: ${t}`); } return res.json(); }
-
-/*****************
- * WALLET / POLYGON
- *****************/
-async function connectWallet(){
-  if(!window.ethereum){ toast('MetaMask not detected', 'error'); return; }
-  try{
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-    if(chainId !== POLYGON_CHAIN_ID){
-      try{ await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID }] }); }
-      catch(err){ if(err && err.code === 4902){ await window.ethereum.request({ method:'wallet_addEthereumChain', params:[{ chainId: POLYGON_CHAIN_ID, chainName:'Polygon Mainnet', nativeCurrency:{ name:'POL', symbol:'POL', decimals:18 }, rpcUrls:['https://polygon-rpc.com/'], blockExplorerUrls:['https://polygonscan.com/'] }] }); } else { throw err; } }
+  // ABI: must match the Solidity in the prompt
+  const ABI = [
+    {
+      "inputs": [],
+      "name": "getMyCount",
+      "outputs": [{"internalType":"uint64","name":"","type":"uint64"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType":"string","name":"cipherJson","type":"string"},
+        {"internalType":"uint64","name":"timestamp","type":"uint64"},
+        {"internalType":"string","name":"titleHint","type":"string"}
+      ],
+      "name": "appendEntry",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {"indexed": true,  "internalType":"address","name":"author","type":"address"},
+        {"indexed": true,  "internalType":"uint64","name":"idx","type":"uint64"},
+        {"indexed": false, "internalType":"uint64","name":"timestamp","type":"uint64"},
+        {"indexed": false, "internalType":"string","name":"cipherJson","type":"string"},
+        {"indexed": false, "internalType":"string","name":"titleHint","type":"string"}
+      ],
+      "name": "EntryAppended",
+      "type": "event"
     }
-    state.web3 = new Web3(window.ethereum);
-    state.wallet = accounts[0];
-    state.contract = new state.web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-    state.isConnected = true;
-    els.chainDot.classList.remove('bg-zinc-400','bg-red-500'); els.chainDot.classList.add('bg-emerald-500');
-    els.chainText.textContent = `Wallet: ${state.wallet.slice(0,6)}…${state.wallet.slice(-4)}`;
-    toast('Wallet connected', 'success');
+  ];
 
-    try{
-      let pk = cacheGetPubKey(state.wallet);
-      if(!pk){ pk = await getMMEncryptionPublicKey(state.wallet); cacheSetPubKey(state.wallet, pk); }
-      state.mmPubKey = pk; els.encDot.classList.add('bg-emerald-500'); els.encText.textContent = 'Enc: MetaMask available';
-      if(els.mmToggle.checked){ state.useMetaMask = true; updateEncModeUI(); }
-    }catch(pubErr){ console.warn('Could not get encryption public key:', pubErr); toast('This wallet does not support encryption API', 'error'); }
-  }catch(e){ console.error(e); els.chainDot.classList.remove('bg-emerald-500'); els.chainDot.classList.add('bg-red-500'); els.chainText.textContent = 'Wallet: connection failed'; toast('Wallet connection failed', 'error'); }
-}
-
-async function storeOnChain({ ipfsHash, title, timestamp }){
-  if(!state.isConnected || !state.contract || !state.wallet){ throw new Error('Wallet not connected'); }
-  let titleToSend = "Encrypted Entry";
-  if(CHAIN_TITLE_MODE === "plaintext"){ titleToSend = title || "Untitled"; }
-  else if(CHAIN_TITLE_MODE === "encrypted"){ if(!state.passphrase) throw new Error('Unlock passphrase to encrypt on-chain title'); const enc = await encryptStringPass(title || "Untitled", state.passphrase); titleToSend = JSON.stringify(enc); }
-  let gasEstimate; try{ gasEstimate = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend).estimateGas({ from: state.wallet }); } catch{ gasEstimate = 300000; }
-  const tx = await state.contract.methods.storeEntry(ipfsHash, timestamp, titleToSend).send({ from: state.wallet, gas: Math.floor(gasEstimate * 1.2) });
-  return tx.transactionHash;
-}
-
-/*****************
- * ENC MODE UI
- *****************/
-function setLockedUI(locked){ if(locked){ els.encBadge.textContent='🔒 Locked'; els.encBadge.className='badge badge-red'; } else { els.encBadge.textContent='🔓 Unlocked'; els.encBadge.className='badge badge-green'; } }
-function updateEncModeUI(){ if(state.useMetaMask){ els.encText.textContent = state.mmPubKey ? 'Enc: MetaMask (metamask-v2, single prompt)' : 'Enc: MetaMask unavailable'; } else { els.encText.textContent = state.passphrase ? 'Enc: passphrase (pass-v2)' : 'Enc: passphrase (locked)'; } }
-
-/*****************
- * ENTRY RENDERING
- *****************/
-function entryCard(entry){
-  const card = document.createElement('div'); card.className = 'card p-4 space-y-2';
-  const head = document.createElement('div'); head.className='flex items-start justify-between gap-3';
-  const left = document.createElement('div');
-  left.innerHTML = `<div class="text-xs text-zinc-500">${new Date(entry.ts).toLocaleString()}</div>
-                    <div class="text-lg font-medium wrap-anywhere" id="t_${entry.id}">[encrypted title]</div>
-                    <div class="text-[10px] text-zinc-500">enc=${entry.enc}</div>`;
-  const right = document.createElement('div'); right.className='flex gap-2 flex-wrap';
-  const decBtn = document.createElement('button'); decBtn.className='btn btn-ghost text-sm'; decBtn.textContent='Decrypt';
-  const pinBtn = document.createElement('button'); pinBtn.className='btn btn-indigo text-sm'; pinBtn.textContent = entry.cid ? 'Pinned ✓' : 'Pin to IPFS'; pinBtn.disabled = !!entry.cid;
-  const consolidateBtn = document.createElement('button'); consolidateBtn.className='btn btn-ghost text-sm'; consolidateBtn.textContent='Consolidate → single-cipher'; consolidateBtn.style.display = (entry.enc === 'metamask-v1') ? 'inline-flex' : 'none';
-  right.appendChild(decBtn); right.appendChild(pinBtn); right.appendChild(consolidateBtn);
-  head.appendChild(left); head.appendChild(right);
-  const body = document.createElement('div'); body.className='text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap wrap-anywhere'; body.textContent='[encrypted body]';
-  const meta = document.createElement('div'); meta.className='flex flex-wrap items-center gap-2 text-xs text-zinc-500';
-  const catSpan = document.createElement('span'); catSpan.textContent='Category: (encrypted)';
-  const tagsSpan = document.createElement('span'); tagsSpan.textContent='Tags: (encrypted)';
-  meta.appendChild(catSpan); meta.appendChild(tagsSpan);
-  const linkWrap = document.createElement('div');
-  if(entry.cid){ const a = document.createElement('a'); a.href = `${WORKER_URL}/ipfs/${entry.cid}`; a.target='_blank'; a.rel='noopener'; a.className='text-xs text-indigo-600 hover:underline'; a.textContent = `Open via worker gateway: ${entry.cid}`; linkWrap.appendChild(a); }
-  if(entry.tx){ const txa = document.createElement('a'); txa.href = `https://polygonscan.com/tx/${entry.tx}`; txa.target='_blank'; txa.rel='noopener'; txa.className='ml-2 text-xs text-emerald-600 hover:underline'; txa.textContent = 'View on Polygonscan'; linkWrap.appendChild(txa); }
-  card.appendChild(head); card.appendChild(body); card.appendChild(meta); card.appendChild(linkWrap);
-
-  decBtn.onclick = async () => {
-    try{
-      const payload = await decryptEntry(entry);
-      if(!payload){ toast('Decryption failed', 'error'); return; }
-      left.querySelector(`#t_${entry.id}`).textContent = payload.title || '(untitled)';
-      body.textContent = payload.body || '(empty)';
-      catSpan.textContent = 'Category: ' + (payload.category||'—');
-      const tags = Array.isArray(payload.tags) ? payload.tags : []; tags.forEach(t=>state.tagsSet.add(t)); if(payload.category) state.categoriesSet.add(payload.category);
-      tagsSpan.textContent = 'Tags: ' + (tags.length? '#'+tags.join(' #') : '—');
-      refreshFiltersUI(); decBtn.textContent='Decrypted'; decBtn.disabled=true;
-    }catch(e){ console.error(e); let msg='Decryption failed'; if(String(e).includes('does not match')) msg+=' (switch to the original account in MetaMask)'; toast(msg,'error'); }
+  // ======= STATE =======
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+  const ui = {
+    btnConnect: $('#btnConnect'),
+    btnSwitch:  $('#btnSwitch'),
+    account:    $('#account'),
+    chain:      $('#chain'),
+    contractAddr: $('#contractAddr'),
+    btnSelfCheck: $('#btnSelfCheck'),
+    selfCheckMsg: $('#selfCheckMsg'),
+    form:       $('#entryForm'),
+    title:      $('#title'),
+    category:   $('#category'),
+    tags:       $('#tags'),
+    body:       $('#body'),
+    btnPublish: $('#btnPublish'),
+    publishMsg: $('#publishMsg'),
+    count:      $('#count'),
+    entries:    $('#entries'),
+    btnRefresh: $('#btnRefresh'),
+    btnExportJSON: $('#btnExportJSON'),
+    btnExportCSV:  $('#btnExportCSV'),
+    fromBlock:  $('#fromBlock'),
+    chunkSize:  $('#chunkSize')
   };
 
-  pinBtn.onclick = async () => {
-    pinBtn.disabled=true; pinBtn.textContent='Pinning…';
-    try{
-      const payloadForIpfs = buildIpfsPayload(entry);
-      const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payloadForIpfs);
-      entry.cid = res.cid || res.IpfsHash || res.hash;
-      if(els.chainToggle.checked && state.isConnected){
-        try { let titlePlain = 'Untitled'; if(entry.enc === 'pass-v2' && state.passphrase){ try{ const p = await decryptPayloadPass(entry.cipher, state.passphrase); titlePlain = p.title || 'Untitled'; }catch{} } else if(entry.enc === 'pass-v1' && state.passphrase){ try{ titlePlain = await decryptStringPass(entry.title, state.passphrase) || 'Untitled'; }catch{} }
-          const tx = await storeOnChain({ ipfsHash: entry.cid, title: titlePlain, timestamp: Math.floor(entry.ts/1000) }); entry.tx = tx; }
-        catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); }
+  let provider, signer, contract, account, chainIdHex;
+  let iface; // ethers.Interface for event parsing
+  let cachedEvents = []; // local (in‑memory) cache for current session
+
+  function setStatus(el, msg, ok=true) {
+    el.textContent = msg;
+    el.className = ok ? 'text-sm text-emerald-700' : 'text-sm text-rose-700';
+  }
+
+  function shortAddr(a){ return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; }
+
+  async function ensureProvider() {
+    if (!window.ethereum) throw new Error('MetaMask not detected.');
+    provider = new ethers.BrowserProvider(window.ethereum);
+    return provider;
+  }
+
+  async function refreshChainAccountUI() {
+    const net = await provider.getNetwork();
+    chainIdHex = '0x' + net.chainId.toString(16);
+    ui.chain.textContent = `${net.name} (${chainIdHex})`;
+    const accts = await provider.listAccounts();
+    account = accts[0]?.address;
+    ui.account.textContent = account ? `${account}` : '—';
+  }
+
+  async function connect() {
+    await ensureProvider();
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    await refreshChainAccountUI();
+    signer = await provider.getSigner();
+    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+    ui.contractAddr.textContent = CONTRACT_ADDRESS;
+    iface = new ethers.Interface(ABI);
+    if (chainIdHex !== POLYGON_PARAMS.chainId) {
+      setStatus(ui.selfCheckMsg, 'Connected, but not on Polygon. Click "Switch to Polygon".', false);
+    }
+    await refreshCount();
+  }
+
+  async function switchToPolygon() {
+    await ensureProvider();
+    try {
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: POLYGON_PARAMS.chainId }] });
+    } catch (err) {
+      // If the chain is not added, add then switch
+      if (err.code === 4902 || (err && err.message && err.message.match(/not added/i))) {
+        await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [POLYGON_PARAMS] });
+      } else {
+        throw err;
       }
-      persistEntries(); renderList(); toast('Pinned to IPFS', 'success');
-    }catch(err){ console.error(err); toast('Pin failed (see console)', 'error'); pinBtn.disabled=false; pinBtn.textContent='Pin to IPFS'; }
-  };
+    }
+    await refreshChainAccountUI();
+  }
 
-  consolidateBtn.onclick = async () => {
+  // MetaMask native encryption helpers
+  async function encryptForAccount(addr, dataObj) {
+    const publicKey = await window.ethereum.request({ method: 'eth_getEncryptionPublicKey', params: [addr] });
+    const payloadStr = JSON.stringify(dataObj);
+    const cipher = window.ethSigUtil.encrypt({
+      publicKey,
+      data: payloadStr,
+      version: 'x25519-xsalsa20-poly1305'
+    });
+    return JSON.stringify(cipher);
+  }
+
+  async function decryptForAccount(addr, cipherJson) {
+    // MetaMask expects the <exact> JSON string produced by eth-sig-util.encrypt
+    const plaintext = await window.ethereum.request({ method: 'eth_decrypt', params: [cipherJson, addr] });
+    return plaintext;
+  }
+
+  // Self-check: encrypt {hello:'world'} and immediately decrypt
+  async function runSelfCheck() {
+    try {
+      if (!account) throw new Error('Connect first.');
+      const test = { hello: 'world' };
+      const cipherJson = await encryptForAccount(account, test);
+      const plain = await decryptForAccount(account, cipherJson);
+      const obj = JSON.parse(plain);
+      if (obj.hello === 'world') {
+        setStatus(ui.selfCheckMsg, 'Self‑check passed. Encryption/decryption works.');
+      } else {
+        setStatus(ui.selfCheckMsg, 'Self‑check failed: decrypted payload mismatch.', false);
+      }
+    } catch (e) {
+      if (/Requested account and message do not match/.test(e.message)) {
+        setStatus(ui.selfCheckMsg, `Decrypt blocked. Switch MetaMask to ${shortAddr(account)} (the connected account).`, false);
+      } else {
+        setStatus(ui.selfCheckMsg, `Self‑check error: ${e.message}`, false);
+      }
+    }
+  }
+
+  function nowSec(){ return Math.floor(Date.now()/1000); }
+  function nowMs(){ return Date.now(); }
+
+  // Publish: encrypt one payload and call appendEntry(cipherJson, now, "Encrypted Entry")
+  async function publish(e) {
+    e.preventDefault();
+    try {
+      if (!account) throw new Error('Connect first.');
+      if (chainIdHex !== POLYGON_PARAMS.chainId) throw new Error('Switch to Polygon mainnet before publishing.');
+      const title = ui.title.value.trim();
+      const body  = ui.body.value.trim();
+      const category = ui.category.value.trim() || 'journal';
+      const tags = ui.tags.value.split(',').map(s=>s.trim()).filter(Boolean);
+      if (!title || !body) throw new Error('Title and body are required.');
+
+      const payload = {
+        version: 1,
+        enc: 'metamask-v2',
+        ts: nowMs(),
+        title, body, category, tags
+      };
+
+      const cipherJson = await encryptForAccount(account, payload);
+      setStatus(ui.publishMsg, 'Encrypted. Sending transaction…');
+
+      const tx = await contract.appendEntry(cipherJson, BigInt(nowSec()), 'Encrypted Entry');
+      setStatus(ui.publishMsg, `Submitted ${tx.hash}. Waiting…`);
+      const rc = await tx.wait();
+      setStatus(ui.publishMsg, `Confirmed in block ${rc.blockNumber}.`, true);
+
+      await refreshCount();
+      await refreshList();
+
+      // Clear form (optional)
+      ui.body.value = '';
+    } catch (e) {
+      setStatus(ui.publishMsg, `Publish failed: ${e.message}`, false);
+    }
+  }
+
+  // Count via getMyCount()
+  async function refreshCount(){
+    if (!contract || !account) return;
     try{
-      if(entry.enc !== 'metamask-v1'){ toast('Already single-cipher'); return; }
-      if(!state.isConnected || !state.wallet){ toast('Connect wallet first'); return; }
-      const title = await decryptWithMetaMask(entry.title); const text  = await decryptWithMetaMask(entry.body);
-      let category = ''; try{ category = await decryptWithMetaMask(entry.category); }catch{}
-      let tags = [];   try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{}
-      const payload = { title, body:text, category, tags };
-      entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); delete entry.title; delete entry.body; delete entry.category; delete entry.tags; entry.enc = 'metamask-v2';
-      persistEntries(); renderList(); toast('Consolidated to single-cipher', 'success');
-    }catch(e){ console.error(e); toast('Consolidation failed', 'error'); }
-  };
+      const n = await contract.getMyCount();
+      const countStr = (typeof n === 'bigint') ? Number(n).toString() : n.toString();
+      ui.count.textContent = countStr;
+    }catch(e){
+      ui.count.textContent = '—';
+    }
+  }
 
-  return card;
-}
+  // Fetch logs for my address author; scan in block chunks
+  async function refreshList(){
+    if (!contract || !account) return;
+    ui.entries.innerHTML = '';
+    cachedEvents = [];
 
-function renderList(){ const container = els.entries; container.innerHTML=''; const list = state.entries.slice().sort((a,b)=>b.ts-a.ts); for(const e of list){ container.appendChild(entryCard(e)); } if(!list.length){ const empty = document.createElement('div'); empty.className='text-sm text-zinc-500'; empty.textContent='No entries yet.'; container.appendChild(empty); } }
-function refreshFiltersUI(){ const catSel = els.filterCategory; const cur = catSel.value; catSel.innerHTML='<option value="">All categories</option>' + Array.from(state.categoriesSet).sort().map(c=>`<option>${c}</option>`).join(''); if(Array.from(state.categoriesSet).includes(cur)) catSel.value=cur; const tagSel = els.filterTag; const curt = tagSel.value; tagSel.innerHTML='<option value="">All tags</option>' + Array.from(state.tagsSet).sort().map(t=>`<option>${t}</option>`).join(''); if(Array.from(state.tagsSet).includes(curt)) tagSel.value=curt; }
+    const startBlockInput = parseInt(ui.fromBlock.value || DEPLOY_BLOCK || 0, 10);
+    const chunk = Math.max(1000, parseInt(ui.chunkSize.value || '50000', 10));
+    const latest = await provider.getBlockNumber();
 
-/*****************
- * ENTRY HELPERS
- *****************/
-function buildIpfsPayload(entry){ if(entry.enc === 'metamask-v2'){ return { version: 5, enc: 'metamask-v2', ts: entry.ts, cipher: entry.cipher }; } else if(entry.enc === 'pass-v2'){ return { version: 5, enc: 'pass-v2', ts: entry.ts, cipher: entry.cipher }; } else { return { version: 4, enc: entry.enc, ts: entry.ts, title: entry.title, body: entry.body, category: entry.category, tags: entry.tags }; } }
-async function decryptEntry(entry){ if(entry.enc === 'metamask-v2'){ if(!state.isConnected || !state.wallet) { toast('Connect MetaMask first'); return null; } const s = await decryptWithMetaMask(entry.cipher); return JSON.parse(s); } else if(entry.enc === 'pass-v2'){ if(!state.passphrase){ toast('Unlock passphrase first'); return null; } return await decryptPayloadPass(entry.cipher, state.passphrase); } else if(entry.enc === 'metamask-v1'){ const title = await decryptWithMetaMask(entry.title); const text  = await decryptWithMetaMask(entry.body); let category = ''; let tags=[]; try{ category = await decryptWithMetaMask(entry.category); }catch{} try{ const t = await decryptWithMetaMask(entry.tags); tags = JSON.parse(t||'[]'); }catch{} return { title, body:text, category, tags }; } else if(entry.enc === 'pass-v1'){ if(!state.passphrase){ toast('Unlock passphrase first'); return null; } const title = await decryptStringPass(entry.title, state.passphrase); const text  = await decryptStringPass(entry.body, state.passphrase); let category = ''; let tags=[]; try{ category = await decryptStringPass(entry.category, state.passphrase); }catch{} try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{} return { title, body:text, category, tags }; } return null; }
+    // Precompute event topic for EntryAppended(address,uint64,uint64,string,string)
+    const eventFrag = iface.getEvent('EntryAppended');
+    const topic0 = iface.getEventTopic(eventFrag);
+    const authorTopic = ethers.zeroPadValue(account, 32).toLowerCase();
 
-/*****************
- * ACTIONS
- *****************/
-async function unlock(){ const p = els.pass.value.trim(); if(!p){ toast('Enter a passphrase'); return; } await deriveKey(p, crypto.getRandomValues(new Uint8Array(16))); state.passphrase = p; setLockedUI(false); updateEncModeUI(); toast('Passphrase unlocked', 'success'); }
-function lock(){ state.passphrase=null; setLockedUI(true); updateEncModeUI(); toast('Locked'); }
+    let from = isNaN(startBlockInput) ? 0 : Math.max(0, startBlockInput);
+    let to = Math.min(latest, from + chunk - 1);
 
-async function saveEntry({pin=false}={}){
-  let encMode = null; if(state.useMetaMask && state.mmPubKey){ encMode = 'metamask-v2'; } else if(state.passphrase){ encMode = 'pass-v2'; } else { toast('Connect wallet (MM) or unlock passphrase first'); return; }
-  const title = (els.title.value||'').trim(); const text = (els.body.value||'').trim(); const category = (els.category.value||'').trim();
-  if(!title && !text){ toast('Write something first'); return; }
-  const payload = { title: title||'(untitled)', body: text||'', category: category||'', tags: [...currentTags] };
-  let entry; if(encMode === 'metamask-v2'){ const cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'metamask-v2', cipher, cid:null, tx:null }; } else { const cipher = await encryptPayloadPass(payload, state.passphrase); entry = { id: crypto.randomUUID(), ts: Date.now(), enc:'pass-v2', cipher, cid:null, tx:null }; }
-  state.entries.push(entry); persistEntries(); els.title.value=''; els.body.value=''; els.category.value=''; currentTags=[]; renderTags(); renderList(); toast('Saved locally', 'success');
-  if(pin){ try{ const payloadForIpfs = buildIpfsPayload(entry); const res = await pinJsonToIpfs(`life-examined-entry-${entry.id}.json`, payloadForIpfs); entry.cid = res.cid || res.IpfsHash || res.hash; if(els.chainToggle.checked && state.isConnected){ try { const tx = await storeOnChain({ ipfsHash: entry.cid, title: payload.title, timestamp: Math.floor(entry.ts/1000) }); entry.tx = tx; } catch (chainErr){ console.warn('On-chain store failed:', chainErr); toast('Pinned; on-chain store failed (see console)', 'error'); } } persistEntries(); renderList(); toast('Pinned to IPFS', 'success'); }catch(e){ console.error(e); toast('Pinned failed (local save succeeded)', 'error'); } }
-}
+    const wanted = parseInt(ui.count.textContent || '0', 10);
 
-async function migrateAll(){ if(!state.entries.length){ toast('No entries to migrate'); return; } if(!state.mmPubKey){ toast('Connect wallet first'); return; } if(!state.passphrase){ toast('Unlock passphrase first'); return; } let count = 0; for(const entry of state.entries){ if(entry.enc !== 'pass-v1') continue; try{ const title = await decryptStringPass(entry.title, state.passphrase); const text  = await decryptStringPass(entry.body, state.passphrase); let category = ''; try{ category = await decryptStringPass(entry.category, state.passphrase);}catch{} let tags = [];  try{ const t = await decryptStringPass(entry.tags, state.passphrase); tags = JSON.parse(t||'[]'); }catch{} const payload = { title, body:text, category, tags }; entry.cipher = encryptWithMetaMask(JSON.stringify(payload), state.mmPubKey); delete entry.title; delete entry.body; delete entry.category; delete entry.tags; entry.enc = 'metamask-v2'; count++; }catch(e){ console.warn('Failed to migrate an entry:', e); } } persistEntries(); renderList(); toast(`Migrated ${count} entr${count===1?'y':'ies'} to MetaMask (single prompt)`, 'success'); }
+    while (from <= latest) {
+      try {
+        const logs = await provider.getLogs({
+          address: CONTRACT_ADDRESS,
+          fromBlock: from,
+          toBlock: to,
+          topics: [ topic0, authorTopic ] // filter author indexed param
+        });
+        for (const log of logs) {
+          const parsed = iface.parseLog(log);
+          const { author, idx, timestamp, cipherJson, titleHint } = parsed.args;
+          cachedEvents.push({
+            blockNumber: log.blockNumber,
+            logIndex: log.index,
+            author,
+            idx: Number(idx),
+            timestamp: Number(timestamp),
+            cipherJson,
+            titleHint
+          });
+        }
+        if (wanted && cachedEvents.length >= wanted) break; // got all
+      } catch (e) {
+        console.warn('getLogs chunk failed', from, to, e);
+      }
+      from = to + 1;
+      to = Math.min(latest, from + chunk - 1);
+    }
 
-/*****************
- * EXPORT / IMPORT
- *****************/
-function exportAll(){ const data = { version:5.1, exportedAt:new Date().toISOString(), entries: state.entries }; const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `life-examined-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove(); }
-function importAll(file){ const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(reader.result); let entries = []; if(Array.isArray(data.entries)){ entries = data.entries; } else if(Array.isArray(data)){ entries = data; } else { throw new Error('Invalid file'); } const map = new Map(state.entries.map(e=>[e.id,e])); for(const e of entries){ map.set(e.id,e); } state.entries = Array.from(map.values()); persistEntries(); renderList(); toast('Import complete','success'); }catch(e){ console.error(e); toast('Import failed','error'); } }; reader.readAsText(file); }
+    // Order by (blockNumber, logIndex)
+    cachedEvents.sort((a,b)=> a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
 
-/*****************
- * SYNC FROM CHAIN
- *****************/
-async function syncFromChain(){ try{ if(!state.isConnected || !state.contract || !state.wallet){ toast('Connect wallet first', 'error'); return; } const records = await state.contract.methods.getMyEntries().call({ from: state.wallet }); let added = 0; for(const r of records){ const cid = r.ipfsHash; if(!cid) continue; if(state.entries.some(e => e.cid === cid)) continue; try{ const res = await fetch(`${WORKER_URL}/ipfs/${cid}`, { mode:'cors' }); if(!res.ok) continue; const obj = await res.json(); const ts = obj.ts ? obj.ts : (Number(r.timestamp) * 1000) || Date.now(); const id = obj.id || crypto.randomUUID(); const enc = obj.enc || 'pass-v1'; const entry = { id, ts, enc, cid, tx:null }; if(obj.cipher){ entry.cipher = obj.cipher; } else { entry.title=obj.title; entry.body=obj.body; entry.category=obj.category; entry.tags=obj.tags; } state.entries.push(entry); added++; }catch(e){ console.warn('Failed to fetch CID', cid, e); } } if(added){ persistEntries(); renderList(); } toast(added ? `Synced ${added} entr${added===1?'y':'ies'} from chain` : 'No new entries on chain', added? 'success':'info'); }catch(e){ console.error(e); toast('Sync failed', 'error'); } }
+    // Render
+    if (cachedEvents.length === 0) {
+      ui.entries.innerHTML = '<li class="text-sm text-slate-500">No entries found in scanned range.</li>';
+    } else {
+      for (const ev of cachedEvents) {
+        const li = document.createElement('li');
+        li.className = 'p-4 bg-slate-50 border border-slate-200 rounded-2xl';
+        const dt = new Date(ev.timestamp * 1000);
+        li.innerHTML = `
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="font-medium">#${ev.idx} • ${ev.titleHint || 'Encrypted Entry'}</div>
+            <div class="text-xs text-slate-500">block ${ev.blockNumber} • ${dt.toLocaleString()}</div>
+          </div>
+          <details class="mt-2 group">
+            <summary class="cursor-pointer select-none text-sm text-indigo-700">Encrypted payload (cipherJson)</summary>
+            <pre class="mt-2 text-xs break-any">${escapeHtml(ev.cipherJson)}</pre>
+          </details>
+          <div class="mt-3 flex items-center gap-2">
+            <button class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm hover:bg-emerald-700" data-action="decrypt">Decrypt</button>
+            <span class="text-xs text-slate-500">Decrypt prompts MetaMask for <code>eth_decrypt</code>.</span>
+          </div>
+          <div class="mt-2 text-sm" data-output></div>
+        `;
+        li.querySelector('[data-action="decrypt"]').addEventListener('click', ()=> decryptEntry(ev, li));
+        ui.entries.appendChild(li);
+      }
+    }
+  }
 
-/*****************
- * EVENTS
- *****************/
-els.unlock.onclick = unlock; els.lock.onclick = lock; els.saveLocal.onclick = ()=>saveEntry({pin:false}); els.saveIpfs.onclick  = ()=>saveEntry({pin:true});
-els.selfCheck.onclick = async ()=>{ try{ if(!state.mmPubKey || !state.wallet){ toast('Connect wallet first'); return; } const sample = { hello: 'world', at: new Date().toISOString() }; const cipher = encryptWithMetaMask(JSON.stringify(sample), state.mmPubKey); const plain  = await decryptWithMetaMask(cipher); const ok = JSON.parse(plain).hello === 'world'; if(ok){ toast('Self-check: OK','success'); } else { throw new Error('Mismatch'); } }catch(e){ console.error(e); let msg = 'Self-check failed'; if(String(e).includes('does not match')) msg += ' (switch to the connected account in MetaMask)'; toast(msg,'error'); } };
-els.export.onclick = exportAll; els.import.onchange = e=>{ if(e.target.files?.[0]) importAll(e.target.files[0]); }; els.clear.onclick = ()=>{ if(confirm('Delete all locally stored encrypted entries?')){ state.entries=[]; persistEntries(); renderList(); toast('Cleared'); } };
-els.search.oninput = renderList; els.filterCategory.onchange = renderList; els.filterTag.onchange = renderList; els.connectBtn.onclick = connectWallet; els.mmToggle.onchange = (e)=>{ state.useMetaMask = !!e.target.checked; if(state.useMetaMask && !state.mmPubKey){ toast('Connect wallet to use MetaMask encryption','error'); e.target.checked=false; state.useMetaMask=false; } updateEncModeUI(); }; els.migrateAllBtn.onclick = migrateAll; els.syncBtn.onclick = syncFromChain;
+  async function decryptEntry(ev, container){
+    const out = container.querySelector('[data-output]');
+    out.textContent = 'Decrypting…';
+    try {
+      const plain = await decryptForAccount(account, ev.cipherJson);
+      const obj = JSON.parse(plain);
+      out.innerHTML = renderPlainEntry(obj);
+    } catch (e) {
+      if (/account and message do not match/i.test(e.message)) {
+        out.innerHTML = `<span class="text-rose-700">Switch MetaMask to account ${account} (the author) to decrypt.</span>`;
+      } else if (/MetaMask Message Signature: User denied message signature/.test(e.message)) {
+        out.innerHTML = `<span class="text-slate-600">Decrypt cancelled.</span>`;
+      } else {
+        out.innerHTML = `<span class="text-rose-700">Decrypt failed: ${escapeHtml(e.message)}</span>`;
+      }
+    }
+  }
 
-if(window.ethereum){ window.ethereum.on?.('accountsChanged', async ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: account changed'; els.chainDot.classList.add('bg-zinc-400'); state.mmPubKey = null; updateEncModeUI(); }); window.ethereum.on?.('chainChanged', ()=>{ state.isConnected=false; els.chainText.textContent='Wallet: chain changed'; els.chainDot.classList.add('bg-zinc-400'); }); }
+  function renderPlainEntry(obj){
+    const tags = Array.isArray(obj.tags) ? obj.tags.join(', ') : '';
+    const t = new Date(obj.ts || Date.now()).toLocaleString();
+    return `
+      <div class="p-3 bg-white border border-slate-200 rounded-xl">
+        <div class="text-sm text-slate-500">${t}</div>
+        <div class="font-semibold">${escapeHtml(obj.title || '')}</div>
+        <div class="mt-1 whitespace-pre-wrap">${escapeHtml(obj.body || '')}</div>
+        <div class="mt-2 text-xs text-slate-500">Category: ${escapeHtml(obj.category || '')}${tags ? ' • Tags: ' + escapeHtml(tags) : ''}</div>
+      </div>
+    `;
+  }
 
-/*****************
- * INIT
- *****************/
-(function init(){ renderTags(); loadEntries(); renderList(); checkWorker(); setLockedUI(true); updateEncModeUI(); })();
+  function escapeHtml(s){
+    return (s||'').toString()
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  // Exports (ciphertexts only)
+  function exportJSON(){
+    const data = cachedEvents.map(e=>({ idx:e.idx, timestamp:e.timestamp, blockNumber:e.blockNumber, cipherJson:e.cipherJson }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, 'life-examined-events.json');
+  }
+  function exportCSV(){
+    const rows = [['idx','timestamp','blockNumber','cipherJson']]
+      .concat(cachedEvents.map(e=>[
+        e.idx,
+        e.timestamp,
+        e.blockNumber,
+        e.cipherJson.replaceAll('"','""')
+      ]));
+    const csv = rows.map(r=>r.map(v=>`"${String(v)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, 'life-examined-events.csv');
+  }
+  function triggerDownload(url, filename){
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }
+
+  // ======= EVENTS =======
+  ui.btnConnect.addEventListener('click', connect);
+  ui.btnSwitch.addEventListener('click', switchToPolygon);
+  ui.btnSelfCheck.addEventListener('click', runSelfCheck);
+  ui.form.addEventListener('submit', publish);
+  ui.btnRefresh.addEventListener('click', (e)=>{ e.preventDefault(); refreshList(); });
+  ui.btnExportJSON.addEventListener('click', (e)=>{ e.preventDefault(); exportJSON(); });
+  ui.btnExportCSV.addEventListener('click', (e)=>{ e.preventDefault(); exportCSV(); });
+
+  // Keep UI fresh on account/chain changes
+  if (window.ethereum){
+    window.ethereum.on('accountsChanged', async ()=>{ await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
+    window.ethereum.on('chainChanged', async ()=>{ await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
+  }
+
+  // Initialize labels
+  ui.contractAddr.textContent = CONTRACT_ADDRESS || '—';
+  ui.fromBlock.value = String(DEPLOY_BLOCK || 0);
+})();
 </script>
 </body>
 </html>
