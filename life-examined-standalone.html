@@ -11,7 +11,6 @@
   <!-- MetaMask eth-sig-util UMD (CDN) provides window.ethSigUtil -->
   <script src="https://unpkg.com/@metamask/eth-sig-util@6.0.1/dist/index.umd.js"></script>
   <style>
-    /* prevent long JSON from blowing layout */
     .break-any { word-break: break-word; overflow-wrap: anywhere; }
   </style>
 </head>
@@ -42,8 +41,7 @@
 
     <section class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
       <p class="text-sm leading-relaxed">
-        <strong>Instructions:</strong> This is a single‑file client‑only app. It encrypts your entry using MetaMask native encryption and stores the cipher JSON in an <em>event</em> on Polygon.
-        Set <code>CONTRACT_ADDRESS</code> (below, in code) to your deployed contract on Polygon mainnet. Optionally set <code>DEPLOY_BLOCK</code> to speed up log scans.
+        <strong>Instructions:</strong> Client‑only app. Encrypts with MetaMask native encryption and stores the cipher JSON in an <em>event</em> on Polygon. Set <code>DEPLOY_BLOCK</code> to your deploy block to speed up scans (optional).
       </p>
     </section>
 
@@ -85,8 +83,8 @@
         <div class="text-sm">You have <span id="count">0</span> entries</div>
       </div>
       <div class="mt-3 flex flex-wrap items-end gap-3">
-        <label class="block"> <span class="text-xs text-slate-500">Scan from block (hint: contract deploy block)</span>
-          <input id="fromBlock" type="number" class="mt-1 w-40 px-3 py-2 rounded-xl border border-slate-300" placeholder="0" />
+        <label class="block"> <span class="text-xs text-slate-500">Scan from block (deploy block)</span>
+          <input id="fromBlock"$1 readonly aria-readonly="true" title="Locked to deploy block for faster scans">
         </label>
         <label class="block"> <span class="text-xs text-slate-500">Chunk size (blocks)</span>
           <input id="chunkSize" type="number" class="mt-1 w-40 px-3 py-2 rounded-xl border border-slate-300" value="50000" />
@@ -101,387 +99,73 @@
     </section>
 
     <footer class="mt-10 text-center text-xs text-slate-500">
-      No local storage. Everything is sourced from on‑chain events. If MetaMask decrypt is greyed out, switch to the account that created the entry.
+      No local storage. Everything is from on‑chain events. If decrypt is greyed out, switch to the account that authored the entry.
     </footer>
   </div>
 
 <script>
 (() => {
   // ======= CONFIG =======
-  // TODO: Set to your deployed Polygon mainnet address
-  const CONTRACT_ADDRESS = "0xYourDeployedContractOnPolygon";
-  // Optional: starting block for scanning (speeds up log fetch). Put your contract deploy block if known.
-  const DEPLOY_BLOCK = 0; // e.g. 61800000 for newer deployments; 0 will scan from genesis.
+  const CONTRACT_ADDRESS = "0xE22c571ae8159c44Fe13957Ab18F7c73c674F82A"; // Polygon mainnet address
+  const DEPLOY_BLOCK = 73360093; // optional: set your deployment block for faster scans
+  const IS_PLACEHOLDER = false; // since address is provided
 
-  // Polygon mainnet params for wallet_addEthereumChain
   const POLYGON_PARAMS = {
     chainId: "0x89",
     chainName: "Polygon Mainnet",
     nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-    rpcUrls: [
-      "https://polygon-rpc.com",
-      "https://rpc.ankr.com/polygon",
-      "https://polygon-bor-rpc.publicnode.com"
-    ],
+    rpcUrls: ["https://polygon-rpc.com","https://rpc.ankr.com/polygon","https://polygon-bor-rpc.publicnode.com"],
     blockExplorerUrls: ["https://polygonscan.com"]
   };
 
-  // ABI: must match the Solidity in the prompt
+  // ABI
   const ABI = [
-    {
-      "inputs": [],
-      "name": "getMyCount",
-      "outputs": [{"internalType":"uint64","name":"","type":"uint64"}],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {"internalType":"string","name":"cipherJson","type":"string"},
-        {"internalType":"uint64","name":"timestamp","type":"uint64"},
-        {"internalType":"string","name":"titleHint","type":"string"}
-      ],
-      "name": "appendEntry",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {"indexed": true,  "internalType":"address","name":"author","type":"address"},
-        {"indexed": true,  "internalType":"uint64","name":"idx","type":"uint64"},
-        {"indexed": false, "internalType":"uint64","name":"timestamp","type":"uint64"},
-        {"indexed": false, "internalType":"string","name":"cipherJson","type":"string"},
-        {"indexed": false, "internalType":"string","name":"titleHint","type":"string"}
-      ],
-      "name": "EntryAppended",
-      "type": "event"
-    }
+    {"inputs":[],"name":"getMyCount","outputs":[{"internalType":"uint64","name":"","type":"uint64"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"string","name":"cipherJson","type":"string"},{"internalType":"uint64","name":"timestamp","type":"uint64"},{"internalType":"string","name":"titleHint","type":"string"}],"name":"appendEntry","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"author","type":"address"},{"indexed":true,"internalType":"uint64","name":"idx","type":"uint64"},{"indexed":false,"internalType":"uint64","name":"timestamp","type":"uint64"},{"indexed":false,"internalType":"string","name":"cipherJson","type":"string"},{"indexed":false,"internalType":"string","name":"titleHint","type":"string"}],"name":"EntryAppended","type":"event"}
   ];
 
   // ======= STATE =======
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => document.querySelectorAll(sel);
-  const ui = {
-    btnConnect: $('#btnConnect'),
-    btnSwitch:  $('#btnSwitch'),
-    account:    $('#account'),
-    chain:      $('#chain'),
-    contractAddr: $('#contractAddr'),
-    btnSelfCheck: $('#btnSelfCheck'),
-    selfCheckMsg: $('#selfCheckMsg'),
-    form:       $('#entryForm'),
-    title:      $('#title'),
-    category:   $('#category'),
-    tags:       $('#tags'),
-    body:       $('#body'),
-    btnPublish: $('#btnPublish'),
-    publishMsg: $('#publishMsg'),
-    count:      $('#count'),
-    entries:    $('#entries'),
-    btnRefresh: $('#btnRefresh'),
-    btnExportJSON: $('#btnExportJSON'),
-    btnExportCSV:  $('#btnExportCSV'),
-    fromBlock:  $('#fromBlock'),
-    chunkSize:  $('#chunkSize')
-  };
+  const $ = (s)=>document.querySelector(s);
+  const ui = { btnConnect:$('#btnConnect'), btnSwitch:$('#btnSwitch'), account:$('#account'), chain:$('#chain'), contractAddr:$('#contractAddr'), btnSelfCheck:$('#btnSelfCheck'), selfCheckMsg:$('#selfCheckMsg'), form:$('#entryForm'), title:$('#title'), category:$('#category'), tags:$('#tags'), body:$('#body'), publishMsg:$('#publishMsg'), count:$('#count'), entries:$('#entries'), btnRefresh:$('#btnRefresh'), btnExportJSON:$('#btnExportJSON'), btnExportCSV:$('#btnExportCSV'), fromBlock:$('#fromBlock'), chunkSize:$('#chunkSize') };
+  let provider, signer, contract, account, chainIdHex, iface; let cachedEvents=[];
 
-  let provider, signer, contract, account, chainIdHex;
-  let iface; // ethers.Interface for event parsing
-  let cachedEvents = []; // local (in‑memory) cache for current session
+  function setStatus(el,msg,ok=true){ el.textContent=msg; el.className = ok ? 'text-sm text-emerald-700' : 'text-sm text-rose-700'; }
+  function shortAddr(a){ return a? a.slice(0,6)+'…'+a.slice(-4) : '—'; }
+  function updateBtnStates(){ const connected=!!account; ui.btnConnect.textContent=connected?'Connected':'Connect MetaMask'; ui.btnConnect.disabled=connected; const onPolygon=chainIdHex==='0x89'; ui.btnSwitch.disabled=onPolygon; ui.btnSwitch.classList.toggle('opacity-60', onPolygon); ui.contractAddr.textContent = CONTRACT_ADDRESS || '—'; }
 
-  function setStatus(el, msg, ok=true) {
-    el.textContent = msg;
-    el.className = ok ? 'text-sm text-emerald-700' : 'text-sm text-rose-700';
+  async function ensureProvider(){ if(!window.ethereum) throw new Error('MetaMask not detected.'); provider = new ethers.BrowserProvider(window.ethereum); return provider; }
+  async function refreshChainAccountUI(){ const net=await provider.getNetwork(); chainIdHex='0x'+net.chainId.toString(16); const name= chainIdHex==='0x89'?'Polygon Mainnet':(net.name||'Unknown'); ui.chain.textContent=`${name} (${chainIdHex})`; const accts=await provider.listAccounts(); account=accts[0]?.address; ui.account.textContent=account||'—'; updateBtnStates(); }
+
+  async function connect(){ await ensureProvider(); await window.ethereum.request({method:'eth_requestAccounts'}); await refreshChainAccountUI(); signer=await provider.getSigner(); iface=new ethers.Interface(ABI); contract=new ethers.Contract(CONTRACT_ADDRESS, ABI, signer); if(chainIdHex!=='0x89'){ setStatus(ui.selfCheckMsg,'Connected, but not on Polygon. Click "Switch to Polygon".', false);} await refreshCount(); }
+  async function switchToPolygon(){ await ensureProvider(); try{ await window.ethereum.request({method:'wallet_switchEthereumChain', params:[{chainId:'0x89'}]}); }catch(err){ if(err.code===4902 || /not added/i.test(err.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain', params:[POLYGON_PARAMS]}); } else { throw err; } } await refreshChainAccountUI(); }
+
+  async function encryptForAccount(addr,dataObj){ if(!window.ethSigUtil||!window.ethSigUtil.encrypt) throw new Error('eth-sig-util UMD not loaded.'); const publicKey = await window.ethereum.request({method:'eth_getEncryptionPublicKey', params:[addr]}); const cipher = window.ethSigUtil.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305'}); return JSON.stringify(cipher); }
+  async function decryptForAccount(addr,cipherJson){ return await window.ethereum.request({method:'eth_decrypt', params:[cipherJson, addr]}); }
+
+  async function runSelfCheck(){ try{ if(!account) throw new Error('Connect first.'); const cipherJson = await encryptForAccount(account,{hello:'world'}); const plain = await decryptForAccount(account,cipherJson); const obj=JSON.parse(plain); if(obj.hello==='world') setStatus(ui.selfCheckMsg,'Self‑check passed.'); else setStatus(ui.selfCheckMsg,'Self‑check failed: mismatch.', false);} catch(e){ if(/Requested account and message do not match/.test(e.message||'')) setStatus(ui.selfCheckMsg,`Decrypt blocked. Switch MetaMask to ${shortAddr(account)}.`, false); else setStatus(ui.selfCheckMsg,`Self‑check error: ${e.message}`, false); } }
+
+  function nowSec(){ return Math.floor(Date.now()/1000); } function nowMs(){ return Date.now(); }
+
+  async function publish(e){ e.preventDefault(); try{ if(!account) throw new Error('Connect first.'); if(chainIdHex!=='0x89') throw new Error('Switch to Polygon before publishing.'); if(!contract) throw new Error('Contract not initialized.'); const title=ui.title.value.trim(); const body=ui.body.value.trim(); const category=ui.category.value.trim()||'journal'; const tags=ui.tags.value.split(',').map(s=>s.trim()).filter(Boolean); if(!title||!body) throw new Error('Title and body are required.'); const payload={version:1, enc:'metamask-v2', ts:nowMs(), title, body, category, tags}; const cipherJson = await encryptForAccount(account, payload); setStatus(ui.publishMsg,'Encrypted. Sending tx…'); const tx = await contract.appendEntry(cipherJson, BigInt(nowSec()), 'Encrypted Entry'); setStatus(ui.publishMsg,`Submitted ${tx.hash}. Waiting…`); const rc = await tx.wait(); setStatus(ui.publishMsg,`Confirmed in block ${rc.blockNumber}.`, true); await refreshCount(); await refreshList(); ui.body.value=''; } catch(e){ setStatus(ui.publishMsg,`Publish failed: ${e.message}`, false); } }
+
+  async function refreshCount(){ if(!account) { ui.count.textContent='0'; return; } try{ const n = await (contract||new ethers.Contract(CONTRACT_ADDRESS, ABI, await provider.getSigner())).getMyCount(); ui.count.textContent = (typeof n==='bigint')? Number(n).toString(): n.toString(); } catch{ ui.count.textContent='—'; }
   }
 
-  function shortAddr(a){ return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; }
-
-  async function ensureProvider() {
-    if (!window.ethereum) throw new Error('MetaMask not detected.');
-    provider = new ethers.BrowserProvider(window.ethereum);
-    return provider;
-  }
-
-  async function refreshChainAccountUI() {
-    const net = await provider.getNetwork();
-    chainIdHex = '0x' + net.chainId.toString(16);
-    ui.chain.textContent = `${net.name} (${chainIdHex})`;
-    const accts = await provider.listAccounts();
-    account = accts[0]?.address;
-    ui.account.textContent = account ? `${account}` : '—';
-  }
-
-  async function connect() {
-    await ensureProvider();
-    await window.ethereum.request({ method: 'eth_requestAccounts' });
-    await refreshChainAccountUI();
-    signer = await provider.getSigner();
-    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-    ui.contractAddr.textContent = CONTRACT_ADDRESS;
-    iface = new ethers.Interface(ABI);
-    if (chainIdHex !== POLYGON_PARAMS.chainId) {
-      setStatus(ui.selfCheckMsg, 'Connected, but not on Polygon. Click "Switch to Polygon".', false);
-    }
-    await refreshCount();
-  }
-
-  async function switchToPolygon() {
-    await ensureProvider();
-    try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: POLYGON_PARAMS.chainId }] });
-    } catch (err) {
-      // If the chain is not added, add then switch
-      if (err.code === 4902 || (err && err.message && err.message.match(/not added/i))) {
-        await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [POLYGON_PARAMS] });
-      } else {
-        throw err;
-      }
-    }
-    await refreshChainAccountUI();
-  }
-
-  // MetaMask native encryption helpers
-  async function encryptForAccount(addr, dataObj) {
-    const publicKey = await window.ethereum.request({ method: 'eth_getEncryptionPublicKey', params: [addr] });
-    const payloadStr = JSON.stringify(dataObj);
-    const cipher = window.ethSigUtil.encrypt({
-      publicKey,
-      data: payloadStr,
-      version: 'x25519-xsalsa20-poly1305'
-    });
-    return JSON.stringify(cipher);
-  }
-
-  async function decryptForAccount(addr, cipherJson) {
-    // MetaMask expects the <exact> JSON string produced by eth-sig-util.encrypt
-    const plaintext = await window.ethereum.request({ method: 'eth_decrypt', params: [cipherJson, addr] });
-    return plaintext;
-  }
-
-  // Self-check: encrypt {hello:'world'} and immediately decrypt
-  async function runSelfCheck() {
-    try {
-      if (!account) throw new Error('Connect first.');
-      const test = { hello: 'world' };
-      const cipherJson = await encryptForAccount(account, test);
-      const plain = await decryptForAccount(account, cipherJson);
-      const obj = JSON.parse(plain);
-      if (obj.hello === 'world') {
-        setStatus(ui.selfCheckMsg, 'Self‑check passed. Encryption/decryption works.');
-      } else {
-        setStatus(ui.selfCheckMsg, 'Self‑check failed: decrypted payload mismatch.', false);
-      }
-    } catch (e) {
-      if (/Requested account and message do not match/.test(e.message)) {
-        setStatus(ui.selfCheckMsg, `Decrypt blocked. Switch MetaMask to ${shortAddr(account)} (the connected account).`, false);
-      } else {
-        setStatus(ui.selfCheckMsg, `Self‑check error: ${e.message}`, false);
-      }
-    }
-  }
-
-  function nowSec(){ return Math.floor(Date.now()/1000); }
-  function nowMs(){ return Date.now(); }
-
-  // Publish: encrypt one payload and call appendEntry(cipherJson, now, "Encrypted Entry")
-  async function publish(e) {
-    e.preventDefault();
-    try {
-      if (!account) throw new Error('Connect first.');
-      if (chainIdHex !== POLYGON_PARAMS.chainId) throw new Error('Switch to Polygon mainnet before publishing.');
-      const title = ui.title.value.trim();
-      const body  = ui.body.value.trim();
-      const category = ui.category.value.trim() || 'journal';
-      const tags = ui.tags.value.split(',').map(s=>s.trim()).filter(Boolean);
-      if (!title || !body) throw new Error('Title and body are required.');
-
-      const payload = {
-        version: 1,
-        enc: 'metamask-v2',
-        ts: nowMs(),
-        title, body, category, tags
-      };
-
-      const cipherJson = await encryptForAccount(account, payload);
-      setStatus(ui.publishMsg, 'Encrypted. Sending transaction…');
-
-      const tx = await contract.appendEntry(cipherJson, BigInt(nowSec()), 'Encrypted Entry');
-      setStatus(ui.publishMsg, `Submitted ${tx.hash}. Waiting…`);
-      const rc = await tx.wait();
-      setStatus(ui.publishMsg, `Confirmed in block ${rc.blockNumber}.`, true);
-
-      await refreshCount();
-      await refreshList();
-
-      // Clear form (optional)
-      ui.body.value = '';
-    } catch (e) {
-      setStatus(ui.publishMsg, `Publish failed: ${e.message}`, false);
-    }
-  }
-
-  // Count via getMyCount()
-  async function refreshCount(){
-    if (!contract || !account) return;
-    try{
-      const n = await contract.getMyCount();
-      const countStr = (typeof n === 'bigint') ? Number(n).toString() : n.toString();
-      ui.count.textContent = countStr;
-    }catch(e){
-      ui.count.textContent = '—';
-    }
-  }
-
-  // Fetch logs for my address author; scan in block chunks
-  async function refreshList(){
-    if (!contract || !account) return;
-    ui.entries.innerHTML = '';
-    cachedEvents = [];
-
-    const startBlockInput = parseInt(ui.fromBlock.value || DEPLOY_BLOCK || 0, 10);
-    const chunk = Math.max(1000, parseInt(ui.chunkSize.value || '50000', 10));
-    const latest = await provider.getBlockNumber();
-
-    // Precompute event topic for EntryAppended(address,uint64,uint64,string,string)
-    const eventFrag = iface.getEvent('EntryAppended');
-    const topic0 = iface.getEventTopic(eventFrag);
-    const authorTopic = ethers.zeroPadValue(account, 32).toLowerCase();
-
-    let from = isNaN(startBlockInput) ? 0 : Math.max(0, startBlockInput);
-    let to = Math.min(latest, from + chunk - 1);
-
-    const wanted = parseInt(ui.count.textContent || '0', 10);
-
-    while (from <= latest) {
-      try {
-        const logs = await provider.getLogs({
-          address: CONTRACT_ADDRESS,
-          fromBlock: from,
-          toBlock: to,
-          topics: [ topic0, authorTopic ] // filter author indexed param
-        });
-        for (const log of logs) {
-          const parsed = iface.parseLog(log);
-          const { author, idx, timestamp, cipherJson, titleHint } = parsed.args;
-          cachedEvents.push({
-            blockNumber: log.blockNumber,
-            logIndex: log.index,
-            author,
-            idx: Number(idx),
-            timestamp: Number(timestamp),
-            cipherJson,
-            titleHint
-          });
-        }
-        if (wanted && cachedEvents.length >= wanted) break; // got all
-      } catch (e) {
-        console.warn('getLogs chunk failed', from, to, e);
-      }
-      from = to + 1;
-      to = Math.min(latest, from + chunk - 1);
-    }
-
-    // Order by (blockNumber, logIndex)
+  async function refreshList(){ if(!account){ ui.entries.innerHTML=''; return; } ui.entries.innerHTML=''; cachedEvents=[]; const start = DEPLOY_BLOCK; const chunk = Math.max(1000, parseInt(ui.chunkSize.value||'50000',10)); const latest = await provider.getBlockNumber(); const ifaceLocal = new ethers.Interface(ABI); const topic0 = ifaceLocal.getEventTopic('EntryAppended'); const authorTopic = ethers.zeroPadValue(account,32); let from = isNaN(start)?0:Math.max(0,start); let to = Math.min(latest, from + chunk - 1); const wanted = parseInt(ui.count.textContent||'0',10);
+    while(from <= latest){ try{ const logs = await provider.getLogs({ address: CONTRACT_ADDRESS, fromBlock: from, toBlock: to, topics: [topic0, authorTopic] }); for(const log of logs){ const parsed = ifaceLocal.parseLog(log); const {author, idx, timestamp, cipherJson, titleHint} = parsed.args; cachedEvents.push({ blockNumber: log.blockNumber, logIndex: log.index, author, idx:Number(idx), timestamp:Number(timestamp), cipherJson, titleHint }); } if(wanted && cachedEvents.length >= wanted) break; } catch(e){ console.warn('getLogs failed', from, to, e); } from = to + 1; to = Math.min(latest, from + chunk - 1); }
     cachedEvents.sort((a,b)=> a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
+    if(cachedEvents.length===0){ ui.entries.innerHTML='<li class="text-sm text-slate-500">No entries found in scanned range.</li>'; return; }
+    for(const ev of cachedEvents){ const li=document.createElement('li'); li.className='p-4 bg-slate-50 border border-slate-200 rounded-2xl'; const dt=new Date(ev.timestamp*1000); li.innerHTML=`<div class=\"flex items-center justify-between gap-3 flex-wrap\"><div class=\"font-medium\">#${ev.idx} • ${ev.titleHint||'Encrypted Entry'}</div><div class=\"text-xs text-slate-500\">block ${ev.blockNumber} • ${dt.toLocaleString()}</div></div><details class=\"mt-2 group\"><summary class=\"cursor-pointer select-none text-sm text-indigo-700\">Encrypted payload (cipherJson)</summary><pre class=\"mt-2 text-xs break-any\">${escapeHtml(ev.cipherJson)}</pre></details><div class=\"mt-3 flex items-center gap-2\"><button class=\"px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm hover:bg-emerald-700\" data-action=\"decrypt\">Decrypt</button><span class=\"text-xs text-slate-500\">(one MetaMask prompt)</span></div><div class=\"mt-2 text-sm\" data-output></div>`; li.querySelector('[data-action="decrypt"]').addEventListener('click',()=>decryptEntry(ev,li)); ui.entries.appendChild(li);} }
 
-    // Render
-    if (cachedEvents.length === 0) {
-      ui.entries.innerHTML = '<li class="text-sm text-slate-500">No entries found in scanned range.</li>';
-    } else {
-      for (const ev of cachedEvents) {
-        const li = document.createElement('li');
-        li.className = 'p-4 bg-slate-50 border border-slate-200 rounded-2xl';
-        const dt = new Date(ev.timestamp * 1000);
-        li.innerHTML = `
-          <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="font-medium">#${ev.idx} • ${ev.titleHint || 'Encrypted Entry'}</div>
-            <div class="text-xs text-slate-500">block ${ev.blockNumber} • ${dt.toLocaleString()}</div>
-          </div>
-          <details class="mt-2 group">
-            <summary class="cursor-pointer select-none text-sm text-indigo-700">Encrypted payload (cipherJson)</summary>
-            <pre class="mt-2 text-xs break-any">${escapeHtml(ev.cipherJson)}</pre>
-          </details>
-          <div class="mt-3 flex items-center gap-2">
-            <button class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm hover:bg-emerald-700" data-action="decrypt">Decrypt</button>
-            <span class="text-xs text-slate-500">Decrypt prompts MetaMask for <code>eth_decrypt</code>.</span>
-          </div>
-          <div class="mt-2 text-sm" data-output></div>
-        `;
-        li.querySelector('[data-action="decrypt"]').addEventListener('click', ()=> decryptEntry(ev, li));
-        ui.entries.appendChild(li);
-      }
-    }
-  }
+  async function decryptEntry(ev,container){ const out=container.querySelector('[data-output]'); out.textContent='Decrypting…'; try{ const plain = await decryptForAccount(account, ev.cipherJson); const obj = JSON.parse(plain); out.innerHTML = renderPlain(obj);} catch(e){ if(/account and message do not match/i.test(e.message||'')) out.innerHTML = `<span class="text-rose-700">Switch MetaMask to ${account} (the author) to decrypt.</span>`; else if(/User denied/.test(e.message||'')) out.innerHTML = `<span class="text-slate-600">Decrypt cancelled.</span>`; else out.innerHTML = `<span class="text-rose-700">Decrypt failed: ${escapeHtml(e.message)}</span>`; } }
 
-  async function decryptEntry(ev, container){
-    const out = container.querySelector('[data-output]');
-    out.textContent = 'Decrypting…';
-    try {
-      const plain = await decryptForAccount(account, ev.cipherJson);
-      const obj = JSON.parse(plain);
-      out.innerHTML = renderPlainEntry(obj);
-    } catch (e) {
-      if (/account and message do not match/i.test(e.message)) {
-        out.innerHTML = `<span class="text-rose-700">Switch MetaMask to account ${account} (the author) to decrypt.</span>`;
-      } else if (/MetaMask Message Signature: User denied message signature/.test(e.message)) {
-        out.innerHTML = `<span class="text-slate-600">Decrypt cancelled.</span>`;
-      } else {
-        out.innerHTML = `<span class="text-rose-700">Decrypt failed: ${escapeHtml(e.message)}</span>`;
-      }
-    }
-  }
+  function renderPlain(obj){ const tags = Array.isArray(obj.tags)? obj.tags.join(', '):''; const t=new Date(obj.ts||Date.now()).toLocaleString(); return `<div class=\"p-3 bg-white border border-slate-200 rounded-xl\"><div class=\"text-sm text-slate-500\">${t}</div><div class=\"font-semibold\">${escapeHtml(obj.title||'')}</div><div class=\"mt-1 whitespace-pre-wrap\">${escapeHtml(obj.body||'')}</div><div class=\"mt-2 text-xs text-slate-500\">Category: ${escapeHtml(obj.category||'')}${tags? ' • Tags: '+escapeHtml(tags):''}</div></div>`; }
+  function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function exportJSON(){ const data=cachedEvents.map(e=>({idx:e.idx,timestamp:e.timestamp,blockNumber:e.blockNumber,cipherJson:e.cipherJson})); const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); triggerDownload(url,'life-examined-events.json'); }
+  function exportCSV(){ const rows=[["idx","timestamp","blockNumber","cipherJson"]].concat(cachedEvents.map(e=>[e.idx,e.timestamp,e.blockNumber,e.cipherJson.replaceAll('"','""')])); const csv=rows.map(r=>r.map(v=>`"${String(v)}"`).join(',')).join('\n'); const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); triggerDownload(url,'life-examined-events.csv'); }
+  function triggerDownload(url,filename){ const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 
-  function renderPlainEntry(obj){
-    const tags = Array.isArray(obj.tags) ? obj.tags.join(', ') : '';
-    const t = new Date(obj.ts || Date.now()).toLocaleString();
-    return `
-      <div class="p-3 bg-white border border-slate-200 rounded-xl">
-        <div class="text-sm text-slate-500">${t}</div>
-        <div class="font-semibold">${escapeHtml(obj.title || '')}</div>
-        <div class="mt-1 whitespace-pre-wrap">${escapeHtml(obj.body || '')}</div>
-        <div class="mt-2 text-xs text-slate-500">Category: ${escapeHtml(obj.category || '')}${tags ? ' • Tags: ' + escapeHtml(tags) : ''}</div>
-      </div>
-    `;
-  }
-
-  function escapeHtml(s){
-    return (s||'').toString()
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#39;');
-  }
-
-  // Exports (ciphertexts only)
-  function exportJSON(){
-    const data = cachedEvents.map(e=>({ idx:e.idx, timestamp:e.timestamp, blockNumber:e.blockNumber, cipherJson:e.cipherJson }));
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, 'life-examined-events.json');
-  }
-  function exportCSV(){
-    const rows = [['idx','timestamp','blockNumber','cipherJson']]
-      .concat(cachedEvents.map(e=>[
-        e.idx,
-        e.timestamp,
-        e.blockNumber,
-        e.cipherJson.replaceAll('"','""')
-      ]));
-    const csv = rows.map(r=>r.map(v=>`"${String(v)}"`).join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, 'life-examined-events.csv');
-  }
-  function triggerDownload(url, filename){
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
-  }
-
-  // ======= EVENTS =======
   ui.btnConnect.addEventListener('click', connect);
   ui.btnSwitch.addEventListener('click', switchToPolygon);
   ui.btnSelfCheck.addEventListener('click', runSelfCheck);
@@ -490,15 +174,11 @@
   ui.btnExportJSON.addEventListener('click', (e)=>{ e.preventDefault(); exportJSON(); });
   ui.btnExportCSV.addEventListener('click', (e)=>{ e.preventDefault(); exportCSV(); });
 
-  // Keep UI fresh on account/chain changes
-  if (window.ethereum){
-    window.ethereum.on('accountsChanged', async ()=>{ await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
-    window.ethereum.on('chainChanged', async ()=>{ await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
-  }
+  if(window.ethereum){ window.ethereum.on('accountsChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); }); window.ethereum.on('chainChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); }); }
 
-  // Initialize labels
   ui.contractAddr.textContent = CONTRACT_ADDRESS || '—';
   ui.fromBlock.value = String(DEPLOY_BLOCK || 0);
+  updateBtnStates();
 })();
 </script>
 </body>
