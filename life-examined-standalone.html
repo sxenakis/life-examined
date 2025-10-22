@@ -153,7 +153,7 @@
                 const topic0 = ethers.id('EntryAdded(address,uint256,bytes)');
                 const topic1 = ethers.zeroPadValue(userAddress, 32); // Filter by your address
                 const latest = await provider.getBlockNumber();
-                const chunkSize = 5000; // Safe chunk size for Polygon RPC limits
+                const chunkSize = 1000; // Smaller chunks for Polygon reliability
                 let allLogs = [];
                 for (let start = 0; start <= latest; start += chunkSize) {
                     const end = Math.min(start + chunkSize - 1, latest);
