@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Secure Blockchain Journal</title>
-    <script src="https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
     <script src="https://unpkg.com/ethers@6.13.1/dist/ethers.umd.min.js"></script>
     <style>
@@ -71,12 +70,21 @@
             return new Uint8Array(b);
         }
 
+        // Native string to hex converter (no Buffer needed)
+        function stringToHex(str) {
+            let hex = '';
+            for (let i = 0; i < str.length; i++) {
+                hex += str.charCodeAt(i).toString(16).padStart(2, '0');
+            }
+            return hex;
+        }
+
         // Custom encrypt function (using TweetNaCl for secure math + our Base58 helpers)
         function encrypt(publicKey, data) {
             const messageUint8 = new TextEncoder().encode(data);
             const nonce = nacl.randomBytes(nacl.box.nonceLength);
             const ourEphemeralPK = nacl.box.keyPair();
-            const theirPKUint8 = new Uint8Array(Buffer.from(publicKey, 'base64')); // Decode base64 to bytes
+            const theirPKUint8 = new Uint8Array(atob(publicKey).split('').map(c => c.charCodeAt(0))); // Decode base64 to bytes
             const shared = nacl.box.before(theirPKUint8, ourEphemeralPK.secretKey);
             const encryptedBytes = nacl.box.after(messageUint8, nonce, shared);
             const output = {
@@ -126,7 +134,7 @@
                 updateStatus('Encrypting...');
                 // Encrypt locally using MetaMask's key (no private key exposed)
                 const encrypted = encrypt(encryptionPublicKey, text);
-                const ciphertext = '0x' + Buffer.from(JSON.stringify(encrypted), 'utf8').toString('hex');
+                const ciphertext = '0x' + stringToHex(JSON.stringify(encrypted));
 
                 updateStatus('Publishing to blockchain...');
                 const tx = await contract.addEntry(ciphertext);
