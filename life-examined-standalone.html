@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Life Examined — Event‑Only Journal (Polygon)</title>
+  <title>Life Examined</title>
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Ethers v6 UMD (CDN) -->
@@ -17,10 +17,10 @@
 <body class="min-h-screen bg-slate-50 text-slate-900">
   <div class="max-w-5xl mx-auto p-4 sm:p-8">
     <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <h1 class="text-2xl sm:text-3xl font-bold">Life Examined — Event‑Only Journal (Polygon)</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold">Life Examined</h1>
       <div class="flex items-center gap-2">
         <button id="btnConnect" class="px-4 py-2 rounded-2xl bg-indigo-600 text-white font-medium shadow hover:bg-indigo-700">Connect MetaMask</button>
-        <button id="btnSwitch" class="px-4 py-2 rounded-2xl bg-slate-200 font-medium hover:bg-slate-300">Switch to Polygon</button>
+        
       </div>
     </header>
 
@@ -39,11 +39,7 @@
       </div>
     </section>
 
-    <section class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-      <p class="text-sm leading-relaxed">
-        <strong>Instructions:</strong> Client‑only app. Encrypts with MetaMask native encryption and stores the cipher JSON in an <em>event</em> on Polygon. Set <code>DEPLOY_BLOCK</code> to your deploy block to speed up scans (optional).
-      </p>
-    </section>
+    
 
     <section class="mt-6 p-4 bg-white rounded-2xl shadow">
       <h2 class="text-xl font-semibold mb-3">Self‑check (encrypt → decrypt)</h2>
@@ -71,7 +67,7 @@
           <textarea id="body" rows="6" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Write your entry here..."></textarea>
         </label>
         <div class="flex items-center gap-2">
-          <button id="btnPublish" type="submit" class="px-4 py-2 rounded-2xl bg-indigo-600 text-white font-medium hover:bg-indigo-700">Encrypt & Append Event</button>
+          <button id="btnPublish" type="submit" class="px-4 py-2 rounded-2xl bg-indigo-600 text-white font-medium hover:bg-indigo-700">Publish</button>
           <div id="publishMsg" class="text-sm"></div>
         </div>
       </form>
@@ -91,9 +87,7 @@
         </label>
         <div class="flex items-center gap-2">
           <button id="btnRefresh" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Refresh List</button>
-          <button id="btnExportJSON" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Export JSON</button>
-          <button id="btnExportCSV" class="px-4 py-2 rounded-2xl bg-slate-200 hover:bg-slate-300">Export CSV</button>
-        </div>
+          
       </div>
       <ol id="entries" class="mt-4 grid gap-3"></ol>
     </section>
@@ -132,18 +126,131 @@
 
   function setStatus(el,msg,ok=true){ el.textContent=msg; el.className = ok ? 'text-sm text-emerald-700' : 'text-sm text-rose-700'; }
   function shortAddr(a){ return a? a.slice(0,6)+'…'+a.slice(-4) : '—'; }
-  function updateBtnStates(){ const connected=!!account; ui.btnConnect.textContent=connected?'Connected':'Connect MetaMask'; ui.btnConnect.disabled=connected; const onPolygon=chainIdHex==='0x89'; ui.btnSwitch.disabled=onPolygon; ui.btnSwitch.classList.toggle('opacity-60', onPolygon); ui.contractAddr.textContent = CONTRACT_ADDRESS || '—'; }
+  function updateBtnStates(){
+    const connectedState = !!connected;
+    ui.btnConnect.textContent = connectedState ? 'Connected' : 'Connect MetaMask';
+    ui.btnConnect.disabled = connectedState;
+    const onPolygon = chainIdHex === '0x89';
+    if (ui.btnSwitch) { ui.btnSwitch.disabled = onPolygon; ui.btnSwitch?.classList?.toggle('opacity-60', onPolygon); }
+    ui.contractAddr.textContent = CONTRACT_ADDRESS || '—';
+  }
 
   async function ensureProvider(){ if(!window.ethereum) throw new Error('MetaMask not detected.'); provider = new ethers.BrowserProvider(window.ethereum); return provider; }
-  async function refreshChainAccountUI(){ const net=await provider.getNetwork(); chainIdHex='0x'+net.chainId.toString(16); const name= chainIdHex==='0x89'?'Polygon Mainnet':(net.name||'Unknown'); ui.chain.textContent=`${name} (${chainIdHex})`; const accts=await provider.listAccounts(); account=accts[0]?.address; ui.account.textContent=account||'—'; updateBtnStates(); }
+  async function refreshChainAccountUI(){
+    if (!provider) return;
+    const net=await provider.getNetwork();
+    chainIdHex='0x'+net.chainId.toString(16);
+    const name= chainIdHex==='0x89'?'Polygon Mainnet':(net.name||'Unknown');
+    ui.chain.textContent=`${name} (${chainIdHex})`;
+    const accts = connected ? await provider.listAccounts() : [];
+    account = accts[0]?.address;
+    ui.account.textContent = account || '—';
+    updateBtnStates();
+  } (${chainIdHex})`; const accts=await provider.listAccounts(); account=accts[0]?.address; ui.account.textContent=account||'—'; updateBtnStates(); }
 
-  async function connect(){ await ensureProvider(); await window.ethereum.request({method:'eth_requestAccounts'}); await refreshChainAccountUI(); signer=await provider.getSigner(); iface=new ethers.Interface(ABI); contract=new ethers.Contract(CONTRACT_ADDRESS, ABI, signer); if(chainIdHex!=='0x89'){ setStatus(ui.selfCheckMsg,'Connected, but not on Polygon. Click "Switch to Polygon".', false);} await refreshCount(); }
+  async function connect(){
+    await ensureProvider();
+    // Explicit permission request; will prompt MetaMask if not already connected/locked
+    await window.ethereum.request({method:'eth_requestAccounts'});
+    connected = true;
+    await refreshChainAccountUI();
+    signer = await provider.getSigner();
+    iface = new ethers.Interface(ABI);
+    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+    if (chainIdHex !== '0x89') setStatus(ui.selfCheckMsg,'Connected, but not on Polygon. Please switch.', false);
+    await refreshCount();
+    // Set listeners only after connection
+    if (window.ethereum && !window.__le_listeners) {
+      window.__le_listeners = true;
+      window.ethereum.on('accountsChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
+      window.ethereum.on('chainChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); });
+    }
+  }); await refreshChainAccountUI(); signer=await provider.getSigner(); iface=new ethers.Interface(ABI); contract=new ethers.Contract(CONTRACT_ADDRESS, ABI, signer); if(chainIdHex!=='0x89'){ setStatus(ui.selfCheckMsg,'Connected, but not on Polygon. Click "Switch to Polygon".', false);} await refreshCount(); }
   async function switchToPolygon(){ await ensureProvider(); try{ await window.ethereum.request({method:'wallet_switchEthereumChain', params:[{chainId:'0x89'}]}); }catch(err){ if(err.code===4902 || /not added/i.test(err.message||'')){ await window.ethereum.request({method:'wallet_addEthereumChain', params:[POLYGON_PARAMS]}); } else { throw err; } } await refreshChainAccountUI(); }
 
-  async function encryptForAccount(addr,dataObj){ if(!window.ethSigUtil||!window.ethSigUtil.encrypt) throw new Error('eth-sig-util UMD not loaded.'); const publicKey = await window.ethereum.request({method:'eth_getEncryptionPublicKey', params:[addr]}); const cipher = window.ethSigUtil.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305'}); return JSON.stringify(cipher); }
-  async function decryptForAccount(addr,cipherJson){ return await window.ethereum.request({method:'eth_decrypt', params:[cipherJson, addr]}); }
+  async function ensureSigUtil(){
+    let sig = window.ethSigUtil || window.EthSigUtil || window.SigUtil || window.metamaskEthSigUtil;
+    if (sig && sig.encrypt) return sig;
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/@metamask/eth-sig-util@6.0.1/dist/index.umd.js',
+      'https://unpkg.com/@metamask/eth-sig-util@6.0.1/dist/index.umd.js'
+    ];
+    for (const src of urls){
+      await new Promise((resolve)=>{
+        const s=document.createElement('script'); s.src=src; s.onload=()=>resolve(); s.onerror=()=>resolve(); document.head.appendChild(s);
+      });
+      sig = window.ethSigUtil || window.EthSigUtil || window.SigUtil || window.metamaskEthSigUtil;
+      if (sig && sig.encrypt) return sig;
+    }
+    throw new Error('eth-sig-util UMD not loaded.');
+  }
+  async function encryptForAccount(addr,dataObj){
+    const sig = await ensureSigUtil();
+    const publicKey = await window.ethereum.request({method:'eth_getEncryptionPublicKey', params:[addr]});
+    const cipher = sig.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305'});
+    return JSON.stringify(cipher);
+  });
+    const cipher = sig.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305'});
+    return JSON.stringify(cipher);
+  });
+    } catch (e) {
+      if (e && (e.code === -32601 || /method not found/i.test(e.message||''))) {
+        throw new Error('MetaMask does not expose eth_getEncryptionPublicKey in this context. Make sure you are using MetaMask (not another provider), are on a https origin, and your account is selected.');
+      }
+      throw e;
+    }
+    const cipher = encryptFn({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305' });
+    return JSON.stringify(cipher);
+  }).then((publicKey)=>{
+      const cipher = SigUtil.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305' });
+      return JSON.stringify(cipher);
+    });
+  }); const cipher = window.ethSigUtil.encrypt({ publicKey, data: JSON.stringify(dataObj), version:'x25519-xsalsa20-poly1305'}); return JSON.stringify(cipher); }
+  async function decryptForAccount(addr,cipherJson){
+    try {
+      return await window.ethereum.request({method:'eth_decrypt', params:[cipherJson, addr]});
+    } catch (e) {
+      if (e && (e.code === -32601 || /method not found/i.test(e.message||''))) {
+        throw new Error('MetaMask does not expose eth_decrypt in this context. Use MetaMask on a https origin and ensure the same account that encrypted is selected.');
+      }
+      throw e;
+    }
+  }); }
 
-  async function runSelfCheck(){ try{ if(!account) throw new Error('Connect first.'); const cipherJson = await encryptForAccount(account,{hello:'world'}); const plain = await decryptForAccount(account,cipherJson); const obj=JSON.parse(plain); if(obj.hello==='world') setStatus(ui.selfCheckMsg,'Self‑check passed.'); else setStatus(ui.selfCheckMsg,'Self‑check failed: mismatch.', false);} catch(e){ if(/Requested account and message do not match/.test(e.message||'')) setStatus(ui.selfCheckMsg,`Decrypt blocked. Switch MetaMask to ${shortAddr(account)}.`, false); else setStatus(ui.selfCheckMsg,`Self‑check error: ${e.message}`, false); } }
+  async function runSelfCheck(){
+    try{
+      if(!account) throw new Error('Connect first.');
+      // Quick provider sanity: must be MetaMask and have request
+      if (!window.ethereum || typeof window.ethereum.request !== 'function') {
+        throw new Error('No EIP‑1193 provider. Install MetaMask.');
+      }
+      const cipherJson = await encryptForAccount(account,{hello:'world'});
+      const plain = await decryptForAccount(account,cipherJson);
+      const obj=JSON.parse(plain);
+      if(obj.hello==='world') setStatus(ui.selfCheckMsg,'Self‑check passed.');
+      else setStatus(ui.selfCheckMsg,'Self‑check failed: mismatch.', false);
+    } catch(e){
+      const msg = (e && e.message) ? e.message : String(e);
+      if(/Requested account and message do not match/i.test(msg)) {
+        setStatus(ui.selfCheckMsg,`Decrypt blocked. Switch MetaMask to ${shortAddr(account)}.`, false);
+      } else if(/eth_getEncryptionPublicKey|eth_decrypt/.test(msg)){
+        setStatus(ui.selfCheckMsg, msg, false);
+      } else {
+        setStatus(ui.selfCheckMsg, `Self‑check error: ${msg}`, false);
+      }
+    }
+  });
+      const plain = await decryptForAccount(account,cipherJson);
+      const obj=JSON.parse(plain);
+      if(obj.hello==='world') setStatus(ui.selfCheckMsg,'Self‑check passed.');
+      else setStatus(ui.selfCheckMsg,'Self‑check failed: mismatch.', false);
+    } catch(e){
+      const msg = (e && e.message) ? e.message : String(e);
+      if(/Requested account and message do not match/i.test(msg)) setStatus(ui.selfCheckMsg,`Decrypt blocked. Switch MetaMask to ${shortAddr(account)}.`, false);
+      else if(/eth_getEncryptionPublicKey/i.test(msg) && /does not exist|not supported|not available/i.test(msg)) setStatus(ui.selfCheckMsg,'Your MetaMask does not expose eth_getEncryptionPublicKey. Update MetaMask or enable encryption permissions for this account.', false);
+      else setStatus(ui.selfCheckMsg,`Self‑check error: ${msg}`, false);
+    }
+  }); const plain = await decryptForAccount(account,cipherJson); const obj=JSON.parse(plain); if(obj.hello==='world') setStatus(ui.selfCheckMsg,'Self‑check passed.'); else setStatus(ui.selfCheckMsg,'Self‑check failed: mismatch.', false);} catch(e){ if(/Requested account and message do not match/.test(e.message||'')) setStatus(ui.selfCheckMsg,`Decrypt blocked. Switch MetaMask to ${shortAddr(account)}.`, false); else setStatus(ui.selfCheckMsg,`Self‑check error: ${e.message}`, false); } }
 
   function nowSec(){ return Math.floor(Date.now()/1000); } function nowMs(){ return Date.now(); }
 
@@ -167,14 +274,14 @@
   function triggerDownload(url,filename){ const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 
   ui.btnConnect.addEventListener('click', connect);
-  ui.btnSwitch.addEventListener('click', switchToPolygon);
+  // removed Switch button per user request
   ui.btnSelfCheck.addEventListener('click', runSelfCheck);
   ui.form.addEventListener('submit', publish);
   ui.btnRefresh.addEventListener('click', (e)=>{ e.preventDefault(); refreshList(); });
-  ui.btnExportJSON.addEventListener('click', (e)=>{ e.preventDefault(); exportJSON(); });
-  ui.btnExportCSV.addEventListener('click', (e)=>{ e.preventDefault(); exportCSV(); });
+  // removed export buttons exportJSON(); });
+  // removed export buttons exportCSV(); });
 
-  if(window.ethereum){ window.ethereum.on('accountsChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); }); window.ethereum.on('chainChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); }); }
+  // listeners now attached after explicit connect() only); window.ethereum.on('chainChanged', async ()=>{ if(!provider) return; await refreshChainAccountUI(); await refreshCount(); await refreshList(); }); }
 
   ui.contractAddr.textContent = CONTRACT_ADDRESS || '—';
   ui.fromBlock.value = String(DEPLOY_BLOCK || 0);
