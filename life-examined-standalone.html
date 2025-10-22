@@ -155,7 +155,7 @@
                 const counter = Number(await contract.getCounter(userAddress));
                 let allLogs = [];
                 for (let id = 1; id <= counter; id++) {
-                    const topic2 = ethers.zeroPadValue(BigInt(id), 32);
+                    const topic2 = ethers.zeroPadValue(`0x${id.toString(16)}`, 32); // Proper bytes-like for ID
                     const filter = {
                         fromBlock: 0,
                         toBlock: 'latest',
