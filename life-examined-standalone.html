@@ -6,7 +6,6 @@
     <title>My Secure Blockchain Journal</title>
     <script src="https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bs58@4.0.1/index.min.js"></script>
     <script src="https://unpkg.com/ethers@6.13.1/dist/ethers.umd.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
@@ -57,19 +56,34 @@
             statusEl.style.color = isError ? 'red' : 'green';
         }
 
-        // Custom encrypt function (using TweetNaCl & bs58 for MetaMask-compatible encryption)
+        // Pure JS Base58 helpers (no external libs needed)
+        const MAP = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        function to_b58(B) {
+            var d = [], s = "", i, j, c, n;
+            for (i in B) { j = 0, c = B[i]; s += c || s.length ^ i ? "" : "1"; while (j in d || c) { n = d[j]; n = n ? n * 256 + c : c; c = n / 58 | 0; d[j] = n % 58; j++; } }
+            while (j--) s += MAP[d[j]];
+            return s;
+        }
+        function from_b58(S) {
+            var d = [], b = [], i, j, c, n;
+            for (i in S) { j = 0, c = MAP.indexOf(S[i]); if (c < 0) return undefined; c || b.length ^ i ? i : b.push(0); while (j in d || c) { n = d[j]; n = n ? n * 58 + c : c; c = n >> 8; d[j] = n % 256; j++; } }
+            while (j--) b.push(d[j]);
+            return new Uint8Array(b);
+        }
+
+        // Custom encrypt function (using TweetNaCl for secure math + our Base58 helpers)
         function encrypt(publicKey, data) {
             const messageUint8 = new TextEncoder().encode(data);
             const nonce = nacl.randomBytes(nacl.box.nonceLength);
             const ourEphemeralPK = nacl.box.keyPair();
-            const theirPKUint8 = bs58.decode(publicKey);
+            const theirPKUint8 = from_b58(publicKey); // Decode Base58 to bytes
             const shared = nacl.box.before(theirPKUint8, ourEphemeralPK.secretKey);
             const encryptedBytes = nacl.box.after(messageUint8, nonce, shared);
             const output = {
                 version: 'x25519-xsalsa20-poly1305',
-                nonce: bs58.encode(nonce),
-                ephemPublicKey: bs58.encode(ourEphemeralPK.publicKey),
-                ciphertext: bs58.encode(encryptedBytes)
+                nonce: to_b58(Array.from(nonce)), // Encode to Base58
+                ephemPublicKey: to_b58(Array.from(ourEphemeralPK.publicKey)),
+                ciphertext: to_b58(Array.from(encryptedBytes))
             };
             return output;
         }
