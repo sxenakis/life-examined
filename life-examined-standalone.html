@@ -146,28 +146,35 @@
             }
         };
 
-        // Step 4: Load past entries (queries blockchain logs)
+        // Step 4: Load past entries (queries blockchain logs with pagination for old entries)
         loadBtn.onclick = async () => {
             try {
                 updateStatus('Loading entries...');
                 const topic0 = ethers.id('EntryAdded(address,uint256,bytes)');
                 const topic1 = ethers.zeroPadValue(userAddress, 32); // Filter by your address
-                const filter = {
-                    fromBlock: 0,
-                    toBlock: 'latest',
-                    address: CONTRACT_ADDRESS,
-                    topics: [topic0, topic1]
-                };
-                const logs = await provider.getLogs(filter);
-                logs.reverse(); // Oldest first by block order
+                const latest = await provider.getBlockNumber();
+                const chunkSize = 5000; // Safe chunk size for Polygon RPC limits
+                let allLogs = [];
+                for (let start = 0; start <= latest; start += chunkSize) {
+                    const end = Math.min(start + chunkSize - 1, latest);
+                    const filter = {
+                        fromBlock: start,
+                        toBlock: end,
+                        address: CONTRACT_ADDRESS,
+                        topics: [topic0, topic1]
+                    };
+                    const chunkLogs = await provider.getLogs(filter);
+                    allLogs = allLogs.concat(chunkLogs);
+                }
+                allLogs.reverse(); // Oldest first by block order
 
                 entriesList.innerHTML = '';
-                if (logs.length === 0) {
+                if (allLogs.length === 0) {
                     entriesList.innerHTML = '<p>No entries yet.</p>';
                     return;
                 }
 
-                logs.forEach((log, index) => {
+                allLogs.forEach((log, index) => {
                     const entryId = BigInt(log.topics[1]).toString();
                     const ciphertext = log.data; // Already hex bytes
                     const entryDiv = document.createElement('div');
@@ -179,7 +186,7 @@
                     `;
                     entriesList.appendChild(entryDiv);
                 });
-                updateStatus(`${logs.length} entries loaded!`);
+                updateStatus(`${allLogs.length} entries loaded!`);
             } catch (err) {
                 updateStatus(err.message, true);
             }
