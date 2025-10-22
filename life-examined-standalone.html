@@ -76,7 +76,7 @@
             const messageUint8 = new TextEncoder().encode(data);
             const nonce = nacl.randomBytes(nacl.box.nonceLength);
             const ourEphemeralPK = nacl.box.keyPair();
-            const theirPKUint8 = from_b58(publicKey); // Decode Base58 to bytes
+            const theirPKUint8 = new Uint8Array(Buffer.from(publicKey, 'base64')); // Decode base64 to bytes
             const shared = nacl.box.before(theirPKUint8, ourEphemeralPK.secretKey);
             const encryptedBytes = nacl.box.after(messageUint8, nonce, shared);
             const output = {
