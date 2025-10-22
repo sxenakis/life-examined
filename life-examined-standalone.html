@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Secure Blockchain Journal</title>
     <script src="https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@metamask/eth-sig-util@5.2.0/dist/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bs58@4.0.1/index.min.js"></script>
     <script src="https://unpkg.com/ethers@6.13.1/dist/ethers.umd.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
@@ -32,8 +33,8 @@
     <div id="entriesList"></div>
 
     <script>
-        // Config: Paste your deployed contract address here
-        const CONTRACT_ADDRESS = 0x8f420B42e119987B9f446C174777Fc35140D8E2e; // e.g., '0x123...'
+        // Config: Your deployed contract address
+        const CONTRACT_ADDRESS = '0xACFD7f4E6e75eEDE3ccd6111adF5CB6eAE69FEf3';
         const CHAIN_ID = 137; // Polygon mainnet
 
         // Contract ABI (simple interface for our Journal contract)
@@ -54,6 +55,23 @@
         function updateStatus(msg, isError = false) {
             statusEl.textContent = msg;
             statusEl.style.color = isError ? 'red' : 'green';
+        }
+
+        // Custom encrypt function (using TweetNaCl & bs58 for MetaMask-compatible encryption)
+        function encrypt(publicKey, data) {
+            const messageUint8 = new TextEncoder().encode(data);
+            const nonce = nacl.randomBytes(nacl.box.nonceLength);
+            const ourEphemeralPK = nacl.box.keyPair();
+            const theirPKUint8 = bs58.decode(publicKey);
+            const shared = nacl.box.before(theirPKUint8, ourEphemeralPK.secretKey);
+            const encryptedBytes = nacl.box.after(messageUint8, nonce, shared);
+            const output = {
+                version: 'x25519-xsalsa20-poly1305',
+                nonce: bs58.encode(nonce),
+                ephemPublicKey: bs58.encode(ourEphemeralPK.publicKey),
+                ciphertext: bs58.encode(encryptedBytes)
+            };
+            return output;
         }
 
         // Step 1: Connect wallet (explicit prompt)
@@ -93,11 +111,7 @@
             try {
                 updateStatus('Encrypting...');
                 // Encrypt locally using MetaMask's key (no private key exposed)
-                const encrypted = EthSigUtil.encrypt({
-                    publicKey: encryptionPublicKey,
-                    data: text,
-                    version: 'x25519-xsalsa20-poly1305'
-                });
+                const encrypted = encrypt(encryptionPublicKey, text);
                 const ciphertext = '0x' + Buffer.from(JSON.stringify(encrypted), 'utf8').toString('hex');
 
                 updateStatus('Publishing to blockchain...');
@@ -123,7 +137,7 @@
                     topics: [topic0, topic1]
                 };
                 const logs = await provider.getLogs(filter);
-                logs.reverse(); // Newest first? No, oldest first by block order
+                logs.reverse(); // Oldest first by block order
 
                 entriesList.innerHTML = '';
                 if (logs.length === 0) {
