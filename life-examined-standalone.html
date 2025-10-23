@@ -146,24 +146,32 @@
             }
         };
 
-        // Step 4: Load past entries (using counter and per-ID queries to avoid range errors)
+        // Step 4: Load past entries (using counter and chunked queries per ID)
         loadBtn.onclick = async () => {
             try {
                 updateStatus('Loading entries...');
                 const topic0 = ethers.id('EntryAdded(address,uint256,bytes)');
                 const topic1 = ethers.zeroPadValue(userAddress, 32); // Filter by your address
                 const counter = Number(await contract.getCounter(userAddress));
+                const latest = await provider.getBlockNumber();
+                const chunkSize = 1000; // Small chunks for Polygon
                 let allLogs = [];
                 for (let id = 1; id <= counter; id++) {
                     const topic2 = ethers.zeroPadValue(ethers.toBeHex(id), 32); // Proper hex-padded bytes for ID
-                    const filter = {
-                        fromBlock: 0,
-                        toBlock: 'latest',
-                        address: CONTRACT_ADDRESS,
-                        topics: [topic0, topic1, topic2]
-                    };
-                    const chunkLogs = await provider.getLogs(filter);
-                    allLogs = allLogs.concat(chunkLogs);
+                    for (let start = 0; start <= latest; start += chunkSize) {
+                        const end = Math.min(start + chunkSize - 1, latest);
+                        const filter = {
+                            fromBlock: start,
+                            toBlock: end,
+                            address: CONTRACT_ADDRESS,
+                            topics: [topic0, topic1, topic2]
+                        };
+                        const chunkLogs = await provider.getLogs(filter);
+                        if (chunkLogs.length > 0) {
+                            allLogs.push(chunkLogs[0]); // Since each ID is unique, take the first match
+                            break; // Stop chunking once found
+                        }
+                    }
                 }
                 allLogs.reverse(); // Oldest first by block order
 
