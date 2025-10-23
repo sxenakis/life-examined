@@ -155,7 +155,7 @@
                 const counter = Number(await contract.getCounter(userAddress));
                 let allLogs = [];
                 for (let id = 1; id <= counter; id++) {
-                    const topic2 = ethers.zeroPadValue(BigInt(id), 32); // Proper bytes-like for ID
+                    const topic2 = ethers.zeroPadValue(ethers.toBeHex(id), 32); // Proper hex-padded bytes for ID
                     const filter = {
                         fromBlock: 0,
                         toBlock: 'latest',
@@ -174,7 +174,7 @@
                 }
 
                 allLogs.forEach((log, index) => {
-                    const entryId = BigInt(log.topics[2]).toString();
+                    const entryId = BigInt(log.topics[2]).toString(); // Use topic2 for ID
                     const ciphertext = log.data; // Already hex bytes
                     const entryDiv = document.createElement('div');
                     entryDiv.className = 'entry';
