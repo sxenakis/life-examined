@@ -154,7 +154,7 @@
                 const topic1 = ethers.zeroPadValue(userAddress, 32); // Filter by your address
                 const counter = Number(await contract.getCounter(userAddress));
                 const latest = await provider.getBlockNumber();
-                const chunkSize = 1000; // Small chunks for Polygon
+                const chunkSize = 10000; // Larger chunks for Alchemy RPC
                 let allLogs = [];
                 for (let id = 1; id <= counter; id++) {
                     const topic2 = ethers.zeroPadValue(ethers.toBeHex(id), 32); // Proper hex-padded bytes for ID
@@ -168,8 +168,8 @@
                         };
                         const chunkLogs = await provider.getLogs(filter);
                         if (chunkLogs.length > 0) {
-                            allLogs.push(chunkLogs[0]); // Since each ID is unique, take the first match
-                            break; // Stop chunking once found
+                            allLogs.push(chunkLogs[0]); // Each ID is unique, take the match
+                            break; // Stop chunking for this ID once found
                         }
                     }
                 }
