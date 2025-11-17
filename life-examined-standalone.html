@@ -41,11 +41,9 @@
 
   <script>
     // ==== SETUP – Your Contract Details (Don't Change Unless Deploying New) ====
-    const CONTRACT_ADDRESS = "0xACFD74fE6e75eDEd3ccD6111adF5CB6eAE69FEf3";
-    const ALCHEMY_KEY = "iJRb_ANag4PMVLKjr5m_k"; // Plug yours in here (from alchemy.com)
-    const RPC_URL = ALCHEMY_KEY !== "iJRb_ANag4PMVLKjr5m_k" 
-      ? `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}` 
-      : "https://polygon-rpc.com"; // Falls back to public if no key
+    const CONTRACT_ADDRESS = "0xAcFD74FE6e75EdEd3Ccd6111Adf5cB6eae69fef3"; // Checksum-fixed for smooth publishing
+    const ALCHEMY_KEY = "iJRb_ANag4PMVLKjr5m_k"; // Your key plugged in – turbo for loads
+    const RPC_URL = `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`;
     // ========================================================================
 
     let provider, signer, contract, account;
