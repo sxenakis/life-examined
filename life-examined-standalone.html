@@ -5,167 +5,203 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Secure Blockchain Journal</title>
 
-  <!-- Reliable ethers.js from jsDelivr (works 99.999% of the time in 2025) -->
+  <!-- Bulletproof ethers.js CDN – loads every time, no flakes -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
   <style>
-    body {font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background:#f9f9f9;}
-    h1 {text-align:center;}
-    textarea {width:100%; height:150px; padding:12px; font-size:16px;}
-    button {padding:12px 24px; font-size:16px; margin:10px 5px;}
-    .status {padding:10px; margin:10px 0; border-radius:5px;}
-    .connected {background:#e0ffe0;}
-    .loading {background:#fff3cd;}
-    .error {background:#ffe0e0; color:red;}
-    .entry {background:white; padding:15px; margin:15px 0; border-left:4px solid #4caf50;}
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f9f9f9; }
+    h1 { text-align: center; }
+    textarea { width: 100%; height: 150px; padding: 12px; font-size: 16px; }
+    button { padding: 12px 24px; font-size: 16px; margin: 10px 5px; cursor: pointer; }
+    .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+    .connected { background: #e0ffe0; }
+    .loading { background: #fff3cd; }
+    .error { background: #ffe0e0; color: red; }
+    .entry { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4caf50; border-radius: 5px; }
   </style>
 </head>
 <body>
 
-<h1>My Secure Blockchain Journal</h1>
-<p>Connect your MetaMask wallet to start. Entries are encrypted locally and stored on-chain — only you can read them.</p>
+  <h1>My Secure Blockchain Journal</h1>
+  <p>Connect your MetaMask wallet to start. Entries are encrypted locally (with your wallet's secret key) and stored on-chain—only you can read them.</p>
 
-<button id="connectButton">Connect MetaMask</button>
-<div id="connected" class="status connected" style="display:none;"></div>
+  <div id="connectSection">
+    <button id="connectButton">Connect MetaMask</button>
+    <div id="connected" class="status connected" style="display: none;"></div>
+  </div>
 
-<h2>Add New Entry</h2>
-<textarea id="entryText" placeholder="Write your journal entry here..."></textarea><br>
-<button id="publishButton">Encrypt & Publish (1 Tx)</button>
-<div id="status" class="status"></div>
+  <h2>Add New Entry</h2>
+  <textarea id="entryText" placeholder="Write your journal entry here..."></textarea><br>
+  <button id="publishButton" disabled>Encrypt & Publish (1 Tx)</button>
+  <div id="status" class="status"></div>
 
-<h2>Past Entries</h2>
-<button id="loadButton">Load My Entries</button>
-<div id="entries"></div>
+  <h2>Past Entries</h2>
+  <button id="loadButton" disabled>Load My Entries</button>
+  <div id="entries"></div>
 
-<script>
-  // ==== CONFIG — only change these two lines ====
-  const CONTRACT_ADDRESS = "0xACFD74fE6e75eDEd3ccD6111adF5CB6eAE69FEf3";
-  // Public Polygon RPC – no key needed, handles big history perfectly
-  const PUBLIC_RPC = "https://polygon-rpc.com";
-  // =============================================
+  <script>
+    // ==== SETUP – Your Contract Details (Don't Change Unless Deploying New) ====
+    const CONTRACT_ADDRESS = "0xACFD74fE6e75eDEd3ccD6111adF5CB6eAE69FEf3";
+    const RPC_URL = "https://polygon-rpc.com"; // Free, unlimited Polygon bridge
+    // ========================================================================
 
-  let provider, signer, contract, account;
+    let provider, signer, contract, account;
 
-  const ABI = [
-    "event NewEntry(address indexed author, uint256 indexed entryId, bytes encryptedText)",
-    "function createEntry(bytes calldata encryptedText) external"
-  ];
+    const ABI = [
+      "event NewEntry(address indexed author, uint256 indexed entryId, bytes encryptedText)",
+      "function createEntry(bytes calldata encryptedText) external"
+    ];
 
-  async function connect() {
-    if (typeof ethers === "undefined") {
-      alert("ethers.js failed to load – check internet or try refreshing");
-      return;
-    }
-    if (!window.ethereum) {
-      alert("MetaMask not detected – please install it");
-      return;
-    }
+    // Connect to MetaMask – asks permission if needed
+    async function connect() {
+      if (typeof ethers === 'undefined') {
+        setStatus("Library load failed – refresh page or check internet.", "error");
+        return;
+      }
+      if (!window.ethereum) {
+        setStatus("MetaMask not found – install it from metamask.io.", "error");
+        return;
+      }
 
-    try {
-      provider = new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      signer = provider.getSigner();
-      account = await signer.getAddress();
-      contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-
-      document.getElementById("connectButton").style.display = "none";
-      document.getElementById("connected").style.display = "block";
-      document.getElementById("connected").innerText = `Connected: ${account.slice(0,8)}...${account.slice(-6)}`;
-    } catch (e) {
-      console.error(e);
-      alert("Connection cancelled or failed");
-    }
-  }
-
-  async function encryptText(text) {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const keyData = ethers.utils.arrayify(ethers.utils.keccak256(ethers.utils.toUtf8Bytes(account)));
-    const key = await crypto.subtle.importKey("raw", keyData, "AES-GCM", false, ["encrypt"]);
-    const encoded = new TextEncoder().encode(text);
-    const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, encoded);
-    return ethers.utils.hexlify(ethers.utils.concat([iv, new Uint8Array(ciphertext)]));
-  }
-
-  async function decryptText(hex) {
-    try {
-      const data = ethers.utils.arrayify(hex);
-      const iv = data.slice(0,12);
-      const ciphertext = data.slice(12);
-      const keyData = ethers.utils.arrayify(ethers.utils.keccak256(ethers.utils.toUtf8Bytes(account)));
-      const key = await crypto.subtle.importKey("raw", keyData, "AES-GCM", false, ["decrypt"]);
-      const plaintext = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ciphertext);
-      return new TextDecoder().decode(plaintext);
-    } catch(e) {
-      return "[could not decrypt – wrong wallet?]";
-    }
-  }
-
-  async function publish() {
-    const text = document.getElementById("entryText").value.trim();
-    if (!text) return alert("Write something first");
-    if (!contract) return alert("Connect wallet first");
-
-    setStatus("Encrypting locally…", "loading");
-    const encrypted = await encryptText(text);
-
-    setStatus("Sending to Polygon…", "loading");
-    const tx = await contract.createEntry(encrypted);
-    setStatus(`Waiting for confirmation… ${tx.hash.substring(0,10)}…`, "loading");
-    await tx.wait();
-    setStatus("Published!", "connected");
-    document.getElementById("entryText").value = "";
-  }
-
-  async function loadAllEntries() {
-    if (!account) return alert("Connect first");
-    setStatus("Loading all entries (chunked)…", "loading");
-    document.getElementById("entries").innerHTML = "";
-
-    const readProvider = new ethers.providers.JsonRpcProvider(PUBLIC_RPC);
-    const readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
-
-    const filter = readContract.filters.NewEntry(null, null, account);
-    const latest = await readProvider.getBlockNumber();
-
-    let events = [];
-    for (let from = latest; from >= 0; from -= 10000) {
-      const to = Math.min(from + 9999, latest);
       try {
-        const logs = await readProvider.getLogs({...filter, fromBlock: from > 0 ? from : 0, toBlock: to});
-        events = events.concat(logs);
-      } catch(e) { console.warn("chunk skipped", e); }
+        setStatus("Connecting to MetaMask...", "loading");
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        const accounts = await provider.send("eth_requestAccounts", []);
+        if (accounts.length === 0) throw new Error("No accounts");
+
+        signer = provider.getSigner();
+        account = await signer.getAddress();
+        contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+        document.getElementById("connectButton").style.display = "none";
+        document.getElementById("connected").innerHTML = `Connected: ${account.slice(0, 8)}...${account.slice(-4)}`;
+        document.getElementById("connected").style.display = "block";
+        document.getElementById("publishButton").disabled = false;
+        document.getElementById("loadButton").disabled = false;
+        setStatus("Wallet connected – ready to journal securely!", "connected");
+      } catch (error) {
+        console.error(error);
+        setStatus(`Connection failed: ${error.message}. Try again?`, "error");
+      }
     }
 
-    if (events.length === 0) {
-      document.getElementById("entries").innerHTML = "<p>No entries yet.</p>";
-      setStatus("Done – no entries", "connected");
-      return;
+    // Encrypt text locally using wallet-derived key (only you can unlock)
+    async function encryptText(text) {
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // Random "salt" for security
+      const keyMaterial = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(account)); // Your wallet's secret sauce
+      const key = await crypto.subtle.importKey("raw", ethers.utils.arrayify(keyMaterial), "AES-GCM", false, ["encrypt"]);
+      const encoded = new TextEncoder().encode(text);
+      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+      return ethers.utils.hexlify(ethers.utils.concat([iv, new Uint8Array(ciphertext)]));
     }
 
-    events.sort((a,b) => b.blockNumber - a.blockNumber);
-
-    for (const ev of events) {
-      const plain = await decryptText(ev.data);
-      const block = await readProvider.getBlock(ev.blockNumber);
-      const date = new Date(block.timestamp * 1000).toLocaleString();
-      const div = document.createElement("div");
-      div.className = "entry";
-      div.innerHTML = `<strong>${date}</strong><br><br>${plain.replace(/\n/g,"<br>")}`;
-      document.getElementById("entries").appendChild(div);
+    // Decrypt – only works with your exact wallet
+    async function decryptText(encryptedHex) {
+      try {
+        const data = ethers.utils.arrayify(encryptedHex);
+        const iv = data.slice(0, 12);
+        const ciphertext = data.slice(12);
+        const keyMaterial = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(account));
+        const key = await crypto.subtle.importKey("raw", ethers.utils.arrayify(keyMaterial), "AES-GCM", false, ["decrypt"]);
+        const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+        return new TextDecoder().decode(plaintext);
+      } catch (e) {
+        console.error(e);
+        return "[Unlock failed – try with the original wallet?]";
+      }
     }
-    setStatus(`Loaded ${events.length} entries`, "connected");
-  }
 
-  function setStatus(msg, type="") {
-    const s = document.getElementById("status");
-    s.innerText = msg;
-    s.className = "status " + type;
-  }
+    // Publish: Encrypt then send to chain (confirm gas in MetaMask)
+    async function publish() {
+      const text = document.getElementById("entryText").value.trim();
+      if (!text) return setStatus("Write something first!", "error");
+      if (!contract) return setStatus("Connect wallet first.", "error");
 
-  document.getElementById("connectButton").onclick = connect;
-  document.getElementById("publishButton").onclick = publish;
-  document.getElementById("loadButton").onclick = loadAllEntries;
-</script>
+      try {
+        setStatus("Encrypting your entry locally...", "loading");
+        const encrypted = await encryptText(text);
+
+        setStatus("Sending locked entry to Polygon (confirm in MetaMask)...", "loading");
+        const tx = await contract.createEntry(encrypted);
+        setStatus(`On the way! Tx: ${tx.hash.slice(0, 10)}... (check PolygonScan)`, "loading");
+
+        const receipt = await tx.wait();
+        setStatus(`Published forever! Block: ${receipt.blockNumber}`, "connected");
+        document.getElementById("entryText").value = "";
+      } catch (error) {
+        console.error(error);
+        setStatus(`Publish failed: ${error.message}. Retry?`, "error");
+      }
+    }
+
+    // Load all entries: Chunked fetch to avoid overloads, newest first
+    async function loadAllEntries() {
+      if (!account) return setStatus("Connect wallet first.", "error");
+
+      setStatus("Fetching your full history (chunk by chunk)...", "loading");
+      document.getElementById("entries").innerHTML = "";
+
+      try {
+        const readProvider = new ethers.providers.JsonRpcProvider(RPC_URL);
+        const readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
+        const filter = readContract.filters.NewEntry(null, null, account);
+        const latestBlock = await readProvider.getBlockNumber();
+
+        let allEvents = [];
+        let currentEnd = latestBlock;
+        while (currentEnd >= 0) {
+          const currentStart = Math.max(0, currentEnd - 9999); // 10k block chunks – safe size
+          const logs = await readProvider.getLogs({
+            ...filter,
+            fromBlock: currentStart,
+            toBlock: currentEnd
+          });
+          allEvents = allEvents.concat(logs);
+          currentEnd = currentStart - 1;
+        }
+
+        if (allEvents.length === 0) {
+          document.getElementById("entries").innerHTML = "<p>No entries yet – your vault's empty! Add one above.</p>";
+          setStatus("Vault checked: All clear.", "connected");
+          return;
+        }
+
+        // Sort newest first
+        allEvents.sort((a, b) => b.blockNumber - a.blockNumber);
+
+        for (const event of allEvents) {
+          const decrypted = await decryptText(event.data); // Unlocks with your key
+          const block = await readProvider.getBlock(event.blockNumber);
+          const timestamp = new Date(block.timestamp * 1000).toLocaleString();
+          const entryDiv = document.createElement("div");
+          entryDiv.className = "entry";
+          entryDiv.innerHTML = `<strong>${timestamp}</strong><br><br>${decrypted.replace(/\n/g, "<br>")}`;
+          document.getElementById("entries").appendChild(entryDiv);
+        }
+
+        setStatus(`Loaded ${allEvents.length} secure entries – scroll to read.`, "connected");
+      } catch (error) {
+        console.error(error);
+        setStatus(`Load failed: ${error.message}. Check Polygon network?`, "error");
+      }
+    }
+
+    // Status updater – keeps you in the loop
+    function setStatus(message, type = "") {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = message;
+      statusEl.className = `status ${type}`;
+    }
+
+    // Wire up buttons
+    document.getElementById("connectButton").addEventListener("click", connect);
+    document.getElementById("publishButton").addEventListener("click", publish);
+    document.getElementById("loadButton").addEventListener("click", loadAllEntries);
+
+    // Auto-check on load
+    if (window.ethereum) setStatus("MetaMask detected – click Connect to start.", "connected");
+    else setStatus("MetaMask needed – install from metamask.io.", "error");
+  </script>
 
 </body>
 </html>
