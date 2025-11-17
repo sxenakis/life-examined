@@ -42,7 +42,10 @@
   <script>
     // ==== SETUP – Your Contract Details (Don't Change Unless Deploying New) ====
     const CONTRACT_ADDRESS = "0xACFD74fE6e75eDEd3ccD6111adF5CB6eAE69FEf3";
-    const RPC_URL = "https://polygon-rpc.com"; // Free, unlimited Polygon bridge
+    const ALCHEMY_KEY = "iJRb_ANag4PMVLKjr5m_k"; // Plug yours in here (from alchemy.com)
+    const RPC_URL = ALCHEMY_KEY !== "iJRb_ANag4PMVLKjr5m_k" 
+      ? `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}` 
+      : "https://polygon-rpc.com"; // Falls back to public if no key
     // ========================================================================
 
     let provider, signer, contract, account;
